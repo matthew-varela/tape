@@ -51,9 +51,11 @@
 		F900097B1A73E9B82EC29D95 /* Kingfisher in Frameworks */ = {isa = PBXBuildFile; productRef = D3EF0F40CC3D96B14A95E229 /* Kingfisher */; };
 		FC5B0A64BABDE5F7D78CC0C3 /* EditProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD36A9020C5DC4096885C4D4 /* EditProfileView.swift */; };
 		FD6208A3D93AA1ECA07D1E8D /* Video.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86158AE985AC535A1DF26EE0 /* Video.swift */; };
+		FE4CFCCBBA552E87777FBE30 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 035AB8D396E2742D6B607B5E /* SearchView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		035AB8D396E2742D6B607B5E /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		060D59C6C12D717FB1F6D16E /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		09A6A1E14D1BB59FA77963E5 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		0C97072D532BE4AE80C400AD /* TapeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TapeApp.swift; sourceTree = "<group>"; };
@@ -164,6 +166,14 @@
 			path = Profile;
 			sourceTree = "<group>";
 		};
+		63EF3C16F18BA2B956E17FE0 /* Search */ = {
+			isa = PBXGroup;
+			children = (
+				035AB8D396E2742D6B607B5E /* SearchView.swift */,
+			);
+			path = Search;
+			sourceTree = "<group>";
+		};
 		68AA60272A05CBC1D45DF3A1 /* Inbox */ = {
 			isa = PBXGroup;
 			children = (
@@ -260,6 +270,7 @@
 				68AA60272A05CBC1D45DF3A1 /* Inbox */,
 				341B3470F426273582027FFD /* Profile */,
 				CE0FA40172CE4E9C275A833D /* Scouting */,
+				63EF3C16F18BA2B956E17FE0 /* Search */,
 				D23C07AF99A958EDFDB0AE79 /* Settings */,
 				B4160EBE618C41F86864F869 /* Upload */,
 			);
@@ -418,6 +429,7 @@
 				28EACB82018362F908B11F72 /* ScoutingBoard.swift in Sources */,
 				ABEF99C4C569839ACC2966A2 /* ScoutingBoardView.swift in Sources */,
 				DB273ACB48C8B26C039B31CA /* ScoutingViewModel.swift in Sources */,
+				FE4CFCCBBA552E87777FBE30 /* SearchView.swift in Sources */,
 				DDAD3FD3A6A1D797D2D544E0 /* SettingsView.swift in Sources */,
 				39EFD8A00259DF5901874B92 /* SignUpView.swift in Sources */,
 				31F6C7982C2F8476BAA6291D /* TagSelectionView.swift in Sources */,

@@ -10,10 +10,10 @@ struct VideoOverlayView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // Gradient scrim at the bottom
+            // Gradient scrim at the bottom third
             LinearGradient(
-                colors: [.clear, .black.opacity(0.7)],
-                startPoint: .center,
+                colors: [.clear, .clear, .black.opacity(0.8)],
+                startPoint: .top,
                 endPoint: .bottom
             )
             .allowsHitTesting(false)
@@ -86,7 +86,7 @@ struct VideoOverlayView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 16)
+            .padding(.bottom, 90)
         }
     }
 }

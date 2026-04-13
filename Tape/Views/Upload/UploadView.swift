@@ -14,18 +14,34 @@ struct UploadView: View {
             ZStack {
                 Color.tapeDarkBg.ignoresSafeArea()
 
-                if uploadVM.selectedVideoURL == nil {
-                    pickerPrompt
-                } else if uploadVM.needsTrimming && !showTagSelection {
-                    VideoTrimmerView(uploadVM: uploadVM) {
-                        showTagSelection = true
+                if currentUser.role != .athlete {
+                    VStack(spacing: 16) {
+                        Image(systemName: "film.stack.fill")
+                            .font(.system(size: 50))
+                            .foregroundStyle(.secondary)
+                        Text("Upload is for Athletes")
+                            .font(.title3.bold())
+                            .foregroundStyle(.white)
+                        Text("Only athletes can upload highlight clips.\nUse Search or the Feed to discover talent.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
                     }
+                    .padding(40)
                 } else {
-                    TagSelectionView(uploadVM: uploadVM) {
-                        Task {
-                            await uploadVM.publish(currentUser: currentUser)
-                            if uploadVM.isPublished {
-                                showSuccessAlert = true
+                    if uploadVM.selectedVideoURL == nil {
+                        pickerPrompt
+                    } else if uploadVM.needsTrimming && !showTagSelection {
+                        VideoTrimmerView(uploadVM: uploadVM) {
+                            showTagSelection = true
+                        }
+                    } else {
+                        TagSelectionView(uploadVM: uploadVM) {
+                            Task {
+                                await uploadVM.publish(currentUser: currentUser)
+                                if uploadVM.isPublished {
+                                    showSuccessAlert = true
+                                }
                             }
                         }
                     }

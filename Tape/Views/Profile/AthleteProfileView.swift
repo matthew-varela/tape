@@ -13,39 +13,53 @@ struct AthleteProfileView: View {
     @State private var showPaywall = false
 
     var body: some View {
-        ZStack {
-            Color.tapeDarkBg.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                Color.tapeDarkBg.ignoresSafeArea()
 
-            if profileVM.isLoading && profileVM.athlete == nil {
-                ProgressView().tint(.white)
-            } else if let athlete = profileVM.athlete {
-                ScrollView {
-                    VStack(spacing: 0) {
-                        profileHeader(athlete)
-                        VitalsDashboard(athlete: athlete)
-                        messageButton(athlete)
-                        mediaTabs
-                        mediaGrid
+                if profileVM.isLoading && profileVM.athlete == nil {
+                    ProgressView().tint(.white)
+                } else if let athlete = profileVM.athlete {
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            profileHeader(athlete)
+                            VitalsDashboard(athlete: athlete)
+                            messageButton(athlete)
+                            mediaTabs
+                            mediaGrid
+                        }
+                    }
+                } else {
+                    Text("Athlete not found")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .task {
+                await profileVM.loadProfile(athleteID: athleteID)
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                if currentUser.id == athleteID {
+                    ToolbarItem(placement: .primaryAction) {
+                        NavigationLink {
+                            SettingsView()
+                        } label: {
+                            Image(systemName: "gearshape.fill")
+                                .foregroundStyle(.white)
+                        }
                     }
                 }
-            } else {
-                Text("Athlete not found")
-                    .foregroundStyle(.secondary)
             }
-        }
-        .task {
-            await profileVM.loadProfile(athleteID: athleteID)
-        }
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .fullScreenCover(item: $selectedVideo) { video in
-            FullScreenVideoPlayer(video: video)
-        }
-        .navigationDestination(item: $navigateToChat) { conversation in
-            ChatThreadView(conversation: conversation, currentUser: currentUser)
-        }
-        .sheet(isPresented: $showPaywall) {
-            ProPaywallSheet(userRole: currentUser.role)
+            .fullScreenCover(item: $selectedVideo) { video in
+                FullScreenVideoPlayer(video: video)
+            }
+            .navigationDestination(item: $navigateToChat) { conversation in
+                ChatThreadView(conversation: conversation, currentUser: currentUser)
+            }
+            .sheet(isPresented: $showPaywall) {
+                ProPaywallSheet(userRole: currentUser.role)
+            }
         }
     }
 
