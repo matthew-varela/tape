@@ -1,6 +1,9 @@
 import SwiftUI
 import Kingfisher
 
+/// Card cell rendered inside a scouting board's grid. Shows the athlete's
+/// avatar, name, position/school subtitle, and a couple of quick stat pills
+/// (height, position).
 struct BookmarkedAthleteCard: View {
     let athlete: User
     let onTap: () -> Void

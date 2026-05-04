@@ -1,10 +1,20 @@
 import SwiftUI
 
+/// `FeedView` is the vertical-paging video feed (TikTok-style). Athletes see
+/// a discover stream; recruiters/brands can toggle into a filtered search
+/// stream. Bookmarking, sharing, and profile navigation all live on the
+/// `VideoOverlayView` floating on top of each player.
+///
+/// Two pieces of state on this view that are easy to confuse:
+///   - `feedVM` owns the data (videos, filters, bookmarks).
+///   - `playerManager` owns AVPlayer instances and ensures only the visible
+///     cell is playing audio.
 struct FeedView: View {
     let currentUser: User
-    @State private var feedVM = FeedViewModel()
+    @State private var feedVM = FeedViewModel(videoService: APIVideoService())
     @State private var playerManager = VideoPlayerManager()
     @State private var showFilters = false
+    @State private var showPaywall = false
     @State private var navigateToProfile: String?
     @State private var showShareSheet = false
     @State private var shareURL: URL?
@@ -41,6 +51,7 @@ struct FeedView: View {
             }
             .task {
                 await feedVM.loadInitialFeed()
+                await feedVM.loadBookmarks(userID: currentUser.id)
                 if let first = feedVM.displayedVideos.first {
                     playerManager.play(videoID: first.id)
                 }
@@ -59,6 +70,9 @@ struct FeedView: View {
                     ShareSheet(activityItems: [url])
                 }
             }
+            .sheet(isPresented: $showPaywall) {
+                ProPaywallSheet(userRole: currentUser.role)
+            }
         }
     }
 
@@ -66,13 +80,16 @@ struct FeedView: View {
         HStack(spacing: 0) {
             ForEach(FeedMode.allCases, id: \.self) { mode in
                 Button {
+                    if mode == .search && currentUser.tier == .free {
+                        // Filtered search is a Pro feature for recruiters/brands.
+                        // Don't switch into it; show the paywall instead.
+                        showPaywall = true
+                        return
+                    }
                     withAnimation(.spring(duration: 0.3)) {
                         feedVM.feedMode = mode
                     }
                     if mode == .search {
-                        if currentUser.tier == .free {
-                            // Will be gated by paywall in Phase 8
-                        }
                         showFilters = true
                     }
                 } label: {
@@ -118,7 +135,12 @@ struct FeedView: View {
                                 navigateToProfile = video.athleteID
                             },
                             onBookmarkTap: {
-                                feedVM.toggleBookmark(videoID: video.id)
+                                Task {
+                                    await feedVM.toggleBookmark(
+                                        videoID: video.id,
+                                        userID: currentUser.id
+                                    )
+                                }
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             },
                             onShareTap: {

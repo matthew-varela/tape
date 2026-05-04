@@ -1,6 +1,17 @@
 import AVFoundation
 import Foundation
 
+/// `VideoCache` keeps `AVPlayerItem` instances warm in memory so that
+/// scrolling the vertical feed doesn't tear down and rebuild the whole video
+/// pipeline on each cell. It is implemented as an `actor` — Swift's
+/// concurrency primitive that serializes access to its mutable state — so
+/// multiple async callers can't race when reading or writing the cache.
+///
+/// The two pieces of mutable state:
+///   - `memoryCache` is `NSCache`, Foundation's auto-purging in-memory cache
+///     that drops entries under memory pressure (unlike a plain dictionary).
+///   - `preloadTasks` deduplicates concurrent requests for the same URL so
+///     two cells asking for the same item share one `Task`.
 actor VideoCache {
     static let shared = VideoCache()
 

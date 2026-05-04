@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// Small icon-over-label button used by the feed's right-rail (bookmark,
+/// share). The drop shadow keeps the white text readable on top of any
+/// underlying video frame.
 struct ActionButton: View {
     let icon: String
     let label: String

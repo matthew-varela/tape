@@ -1,13 +1,39 @@
 import Foundation
 
+/// `VideoServiceProtocol` is the contract for everything related to video
+/// records: feeds, profile sections, search, publish, bookmarks, and pins.
+///
+/// All methods are `async throws` so call sites can present spinners and
+/// surface errors. Implementations live alongside other service families:
+///   - `MockVideoService`  (in-memory, for tests/previews)
+///   - `APIVideoService`   (production REST calls)
 protocol VideoServiceProtocol {
     func fetchFeedVideos(page: Int) async throws -> [Video]
     func fetchVideos(for athleteID: String) async throws -> [Video]
     func fetchVideos(for athleteID: String, category: VideoCategory) async throws -> [Video]
     func fetchFilteredVideos(filters: FeedFilters) async throws -> [Video]
     func publishVideo(_ video: Video) async throws
+
+    // MARK: Bookmarks (per-user)
+    /// Returns the list of video IDs the user has saved.
+    func fetchBookmarks(userID: String) async throws -> [String]
+
+    /// Persists a bookmark.
+    func addBookmark(userID: String, videoID: String) async throws
+
+    /// Removes a bookmark.
+    func removeBookmark(userID: String, videoID: String) async throws
+
+    // MARK: Pins (athlete chooses one or more clips to feature)
+    /// Pins the given video to the top of the athlete's profile grid.
+    func pinVideo(videoID: String) async throws
+
+    /// Removes the pin.
+    func unpinVideo(videoID: String) async throws
 }
 
+/// Used by the recruiter "search the feed" flow on `/api/videos/search`. Each
+/// optional field becomes a query parameter.
 struct FeedFilters: Equatable {
     var position: String?
     var state: String?
@@ -17,8 +43,13 @@ struct FeedFilters: Equatable {
     var gradYear: Int?
 }
 
+// MARK: - MockVideoService
+
+/// In-memory implementation. Used by previews and unit tests. Bookmarks and
+/// pin state are tracked in dictionaries scoped to this instance.
 final class MockVideoService: VideoServiceProtocol {
     private var videos = MockData.videos
+    private var bookmarks: [String: Set<String>] = [:]
 
     func fetchFeedVideos(page: Int) async throws -> [Video] {
         try await Task.sleep(for: .milliseconds(300))
@@ -56,5 +87,34 @@ final class MockVideoService: VideoServiceProtocol {
     func publishVideo(_ video: Video) async throws {
         try await Task.sleep(for: .milliseconds(500))
         videos.insert(video, at: 0)
+    }
+
+    func fetchBookmarks(userID: String) async throws -> [String] {
+        try await Task.sleep(for: .milliseconds(100))
+        return Array(bookmarks[userID] ?? [])
+    }
+
+    func addBookmark(userID: String, videoID: String) async throws {
+        try await Task.sleep(for: .milliseconds(80))
+        bookmarks[userID, default: []].insert(videoID)
+    }
+
+    func removeBookmark(userID: String, videoID: String) async throws {
+        try await Task.sleep(for: .milliseconds(80))
+        bookmarks[userID]?.remove(videoID)
+    }
+
+    func pinVideo(videoID: String) async throws {
+        try await Task.sleep(for: .milliseconds(80))
+        if let i = videos.firstIndex(where: { $0.id == videoID }) {
+            videos[i].isPinned = true
+        }
+    }
+
+    func unpinVideo(videoID: String) async throws {
+        try await Task.sleep(for: .milliseconds(80))
+        if let i = videos.firstIndex(where: { $0.id == videoID }) {
+            videos[i].isPinned = false
+        }
     }
 }

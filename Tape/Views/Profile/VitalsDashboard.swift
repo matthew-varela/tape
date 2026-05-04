@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// `VitalsDashboard` is the row of athlete stats (height, weight, 40-yard,
+/// GPA) shown on the profile header. It hides any field that the athlete
+/// hasn't filled out, so a partially-complete profile still looks intentional
+/// rather than empty-grid-with-blanks.
 struct VitalsDashboard: View {
     let athlete: User
 

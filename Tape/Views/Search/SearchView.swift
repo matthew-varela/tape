@@ -1,8 +1,18 @@
 import SwiftUI
 import Kingfisher
 
+/// `SearchView` is the people-finder. It calls `/api/users/search` on the
+/// backend, which means filtering happens server-side and we never need to
+/// download every user into memory.
+///
+/// To avoid sending a request for every keystroke we use a *debounce* — we
+/// wait 300ms after the user stops typing before firing. We accomplish this
+/// by tracking the active search Task and cancelling it whenever the query
+/// or filters change. Cancellation means the Task throws `CancellationError`
+/// out of `Task.sleep` and bails before hitting the network.
 struct SearchView: View {
     let currentUser: User
+
     @State private var searchText = ""
     @State private var searchResults: [User] = []
     @State private var isSearching = false
@@ -10,7 +20,12 @@ struct SearchView: View {
     @State private var showFilters = false
     @State private var navigateToProfile: String?
 
-    private let profileService: ProfileServiceProtocol = MockProfileService()
+    /// The currently in-flight search Task, kept so we can cancel it whenever
+    /// the inputs change.
+    @State private var searchTask: Task<Void, Never>?
+
+    private let profileService: ProfileServiceProtocol = APIProfileService()
+    private let debounce: Duration = .milliseconds(300)
 
     var body: some View {
         NavigationStack {
@@ -31,13 +46,15 @@ struct SearchView: View {
             }
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $selectedFilters) {
-                    Task { await performSearch() }
+                    scheduleSearch()
                 }
                 .presentationDetents([.medium])
             }
             .task {
-                await loadAllUsers()
+                // Initial empty-query load shows the default list of athletes.
+                await runSearch()
             }
+            .onChange(of: searchText) { _, _ in scheduleSearch() }
         }
     }
 
@@ -50,13 +67,9 @@ struct SearchView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .foregroundStyle(.white)
-                    .onChange(of: searchText) { _, _ in
-                        Task { await performSearch() }
-                    }
                 if !searchText.isEmpty {
                     Button {
                         searchText = ""
-                        Task { await performSearch() }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
@@ -90,31 +103,31 @@ struct SearchView: View {
                         if let role = selectedFilters.role {
                             filterChip(role.displayName) {
                                 selectedFilters.role = nil
-                                Task { await performSearch() }
+                                scheduleSearch()
                             }
                         }
                         if let pos = selectedFilters.position, !pos.isEmpty {
                             filterChip(pos) {
                                 selectedFilters.position = nil
-                                Task { await performSearch() }
+                                scheduleSearch()
                             }
                         }
                         if let state = selectedFilters.state, !state.isEmpty {
                             filterChip(state) {
                                 selectedFilters.state = nil
-                                Task { await performSearch() }
+                                scheduleSearch()
                             }
                         }
                         if let sport = selectedFilters.sport, !sport.isEmpty {
                             filterChip(sport) {
                                 selectedFilters.sport = nil
-                                Task { await performSearch() }
+                                scheduleSearch()
                             }
                         }
 
                         Button("Clear All") {
                             selectedFilters = SearchFilters()
-                            Task { await performSearch() }
+                            scheduleSearch()
                         }
                         .font(.caption.bold())
                         .foregroundStyle(Color.tapeRed)
@@ -179,40 +192,41 @@ struct SearchView: View {
         (selectedFilters.sport != nil && !selectedFilters.sport!.isEmpty)
     }
 
-    private func loadAllUsers() async {
-        do {
-            searchResults = try await profileService.fetchAthletes()
-        } catch {}
-    }
+    // MARK: - Debounced search
 
-    private func performSearch() async {
-        let allUsers = MockData.allUsers
-        var filtered = allUsers
-
-        if !searchText.isEmpty {
-            let query = searchText.lowercased()
-            filtered = filtered.filter {
-                $0.displayName.lowercased().contains(query) ||
-                ($0.highSchool?.lowercased().contains(query) ?? false) ||
-                ($0.organization?.lowercased().contains(query) ?? false) ||
-                ($0.position?.lowercased().contains(query) ?? false)
+    /// Cancels any pending/in-flight search task and schedules a new one.
+    /// Called from the text field's `onChange` and from filter mutations.
+    private func scheduleSearch() {
+        searchTask?.cancel()
+        searchTask = Task {
+            do {
+                try await Task.sleep(for: debounce)
+                guard !Task.isCancelled else { return }
+                await runSearch()
+            } catch {
+                // CancellationError — a newer keystroke superseded us.
             }
         }
+    }
 
-        if let role = selectedFilters.role {
-            filtered = filtered.filter { $0.role == role }
+    /// Performs one round trip to `/api/users/search`. Runs on the MainActor
+    /// because all of its state mutations need to happen on the UI thread.
+    @MainActor
+    private func runSearch() async {
+        isSearching = true
+        defer { isSearching = false }
+        do {
+            let results = try await profileService.searchUsers(
+                query: searchText,
+                role: selectedFilters.role,
+                position: selectedFilters.position,
+                state: selectedFilters.state,
+                sport: selectedFilters.sport
+            )
+            searchResults = results
+        } catch {
+            // Swallow — keep previous results on transient failure.
         }
-        if let pos = selectedFilters.position, !pos.isEmpty {
-            filtered = filtered.filter { $0.position == pos }
-        }
-        if let state = selectedFilters.state, !state.isEmpty {
-            filtered = filtered.filter { $0.state == state }
-        }
-        if let sport = selectedFilters.sport, !sport.isEmpty {
-            filtered = filtered.filter { $0.sport == sport }
-        }
-
-        searchResults = filtered
     }
 }
 
@@ -297,7 +311,6 @@ struct SearchFilterSheet: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // Role filter
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Role")
                                 .font(.headline)
@@ -310,7 +323,6 @@ struct SearchFilterSheet: View {
                             }
                         }
 
-                        // Position
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Position")
                                 .font(.headline)
@@ -333,7 +345,6 @@ struct SearchFilterSheet: View {
                             }
                         }
 
-                        // State
                         VStack(alignment: .leading, spacing: 8) {
                             Text("State")
                                 .font(.headline)
@@ -352,7 +363,6 @@ struct SearchFilterSheet: View {
                             .clipShape(RoundedRectangle(cornerRadius: 10))
                         }
 
-                        // Sport
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Sport")
                                 .font(.headline)

@@ -1,6 +1,14 @@
 import AVFoundation
 import SwiftUI
 
+/// `AsyncVideoThumbnail` derives a poster frame from a remote video URL on
+/// the fly using `AVAssetImageGenerator`. Used in the profile grid as a
+/// fallback when the backend hasn't returned a `thumbnailURL` yet (e.g.
+/// for legacy uploads that pre-date the thumbnail pipeline).
+///
+/// Long-term we should switch every grid tile to `KFImage(thumbnailURL)`
+/// because it's significantly faster and lighter — but until every video has
+/// a thumbnail this fallback prevents broken-looking gaps.
 struct AsyncVideoThumbnail: View {
     let videoURL: String
     @State private var thumbnail: UIImage?

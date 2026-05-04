@@ -1,6 +1,13 @@
 import AVFoundation
 import SwiftUI
 
+/// Custom trim UI for clips longer than 15 seconds. The user drags two
+/// handles on a thumbnail strip to choose start/end, and the preview player
+/// loops the selected range continuously so they can preview their cut.
+///
+/// We don't actually export the trim here — that happens later inside
+/// `UploadViewModel.publish` so cancellation can fall through cleanly.
+/// This view only updates `uploadVM.trimStart` / `trimEnd`.
 struct VideoTrimmerView: View {
     @Bindable var uploadVM: UploadViewModel
     let onDone: () -> Void

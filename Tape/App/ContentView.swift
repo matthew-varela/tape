@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// `ContentView` is the top-level routing switch. It reads the auth state
+/// from the environment and shows one of three things:
+///
+///   - `.unknown`         → loading spinner (cold-launch session restore in
+///                          progress)
+///   - `.unauthenticated` → login screen
+///   - `.authenticated`   → the main tab interface
+///
+/// We animate transitions with a 0.3s ease so going from spinner to login or
+/// login to tabs doesn't feel abrupt.
 struct ContentView: View {
     @Environment(AuthViewModel.self) private var authVM
 
@@ -20,6 +30,9 @@ struct ContentView: View {
     }
 }
 
+/// `MainTabView` is the post-login chrome. Tabs are deliberately the same set
+/// for every role — what's gated happens *inside* each tab (for example
+/// athletes can't open recruiter-only filters in Search).
 struct MainTabView: View {
     let currentUser: User
     @Environment(AuthViewModel.self) private var authVM
@@ -45,6 +58,10 @@ struct MainTabView: View {
     }
 }
 
+/// Routes the Profile tab to the correct screen based on role. Athletes see
+/// their public-facing profile (so the experience matches what coaches see);
+/// recruiters and brands see a settings-style screen with their org info
+/// and a shortcut into scouting boards.
 struct ProfileTabView: View {
     let currentUser: User
 
@@ -58,6 +75,8 @@ struct ProfileTabView: View {
     }
 }
 
+/// Recruiter / brand profile tab. Shows org info, plan, and a shortcut into
+/// scouting boards. Settings live behind the gear icon top right.
 struct CoachBrandProfileView: View {
     let currentUser: User
     @Environment(AuthViewModel.self) private var authVM

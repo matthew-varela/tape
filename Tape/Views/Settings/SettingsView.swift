@@ -1,5 +1,8 @@
 import SwiftUI
 
+/// `SettingsView` is the gear-icon menu accessible from the profile tab. It
+/// shows account info, lets the user navigate into edit profile, manage
+/// their subscription (open the paywall), and sign out.
 struct SettingsView: View {
     @Environment(AuthViewModel.self) private var authVM
     @State private var showPaywall = false

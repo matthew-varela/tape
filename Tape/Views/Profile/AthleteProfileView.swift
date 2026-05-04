@@ -2,15 +2,28 @@ import AVFoundation
 import SwiftUI
 import Kingfisher
 
+/// `AthleteProfileView` shows a single athlete's profile: photo, vitals,
+/// videos (split into Tape and Culture/NIL tabs), and — when viewing your
+/// own profile — analytics like profile viewers.
+///
+/// Two key Pro-gated interactions live here:
+///   - Pinning your own clip (long-press the tile),
+///   - Tapping the profile-views badge to see exactly who viewed you.
 struct AthleteProfileView: View {
     let athleteID: String
     let currentUser: User
-    @State private var profileVM = ProfileViewModel()
-    @State private var inboxVM = InboxViewModel()
+    @State private var profileVM = ProfileViewModel(
+        profileService: APIProfileService(),
+        videoService: APIVideoService()
+    )
+    @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var selectedTab: VideoCategory = .tape
     @State private var selectedVideo: Video?
     @State private var navigateToChat: Conversation?
     @State private var showPaywall = false
+    @State private var showViewersSheet = false
+
+    private var isOwnProfile: Bool { currentUser.id == athleteID }
 
     var body: some View {
         NavigationStack {
@@ -36,11 +49,17 @@ struct AthleteProfileView: View {
             }
             .task {
                 await profileVM.loadProfile(athleteID: athleteID)
+                if isOwnProfile {
+                    // Profile viewers list is only relevant for the owner.
+                    // Backend should 403 if anyone else asks; we still load
+                    // it eagerly so the sheet is instant when they open it.
+                    await profileVM.loadProfileViewers(athleteID: athleteID)
+                }
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
-                if currentUser.id == athleteID {
+                if isOwnProfile {
                     ToolbarItem(placement: .primaryAction) {
                         NavigationLink {
                             SettingsView()
@@ -60,8 +79,14 @@ struct AthleteProfileView: View {
             .sheet(isPresented: $showPaywall) {
                 ProPaywallSheet(userRole: currentUser.role)
             }
+            .sheet(isPresented: $showViewersSheet) {
+                ProfileViewersSheet(viewers: profileVM.profileViewers)
+                    .presentationDetents([.medium, .large])
+            }
         }
     }
+
+    // MARK: - Header
 
     private func profileHeader(_ athlete: User) -> some View {
         VStack(spacing: 12) {
@@ -86,18 +111,22 @@ struct AthleteProfileView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-            // Profile views
-            if currentUser.id == athlete.id {
-                HStack(spacing: 4) {
-                    Image(systemName: "eye.fill")
-                    Text("\(athlete.profileViewsThisWeek) profile views this week")
-                }
-                .font(.caption)
-                .foregroundStyle(Color.tapeRed)
-                .onTapGesture {
-                    if currentUser.tier == .free {
+            // Profile views badge: tappable for the owner. Free → paywall;
+            // Pro → list sheet.
+            if isOwnProfile {
+                Button {
+                    if currentUser.tier == .pro {
+                        showViewersSheet = true
+                    } else {
                         showPaywall = true
                     }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "eye.fill")
+                        Text("\(athlete.profileViewsThisWeek) profile views this week")
+                    }
+                    .font(.caption)
+                    .foregroundStyle(Color.tapeRed)
                 }
             }
         }
@@ -174,11 +203,106 @@ struct AthleteProfileView: View {
                     .onTapGesture {
                         selectedVideo = video
                     }
+                    .contextMenu {
+                        if isOwnProfile {
+                            Button {
+                                handlePinTap(video: video)
+                            } label: {
+                                if video.isPinned {
+                                    Label("Unpin", systemImage: "pin.slash.fill")
+                                } else {
+                                    Label("Pin to Top", systemImage: "pin.fill")
+                                }
+                            }
+                        }
+                    }
             }
         }
         .padding(.top, 8)
     }
+
+    // MARK: - Pin handling
+
+    private func handlePinTap(video: Video) {
+        // Pinning is a Pro feature for athletes. Free users see the paywall.
+        if currentUser.tier == .free {
+            showPaywall = true
+            return
+        }
+        Task {
+            if video.isPinned {
+                await profileVM.unpin(video: video)
+            } else {
+                await profileVM.pin(video: video)
+            }
+        }
+    }
 }
+
+// MARK: - ProfileViewersSheet
+
+/// Pro-only sheet that shows exactly who viewed the athlete's profile this
+/// week. Backend returns a list of `User` records ordered by most-recent view.
+private struct ProfileViewersSheet: View {
+    let viewers: [User]
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.tapeDarkBg.ignoresSafeArea()
+
+                if viewers.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "eye.slash")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.secondary)
+                        Text("No views yet this week")
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    List(viewers) { user in
+                        HStack(spacing: 14) {
+                            if let urlString = user.profileImageURL, let url = URL(string: urlString) {
+                                KFImage(url)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 44, height: 44)
+                                    .clipShape(Circle())
+                            } else {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(.secondary)
+                            }
+                            VStack(alignment: .leading) {
+                                Text(user.displayName)
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+                                Text(user.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .listRowBackground(Color.tapeCardBg)
+                    }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                }
+            }
+            .navigationTitle("Profile Viewers")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - FullScreenVideoPlayer
 
 struct FullScreenVideoPlayer: View {
     let video: Video

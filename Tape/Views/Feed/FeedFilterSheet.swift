@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// `FeedFilterSheet` is the recruiter/brand-only filter sheet for the
+/// feed's Search mode. Selections bind to the parent `FeedFilters`; tapping
+/// Apply triggers `feedVM.applyFilters()` (a single round trip to
+/// `/api/videos/search`).
 struct FeedFilterSheet: View {
     @Binding var filters: FeedFilters
     let onApply: () -> Void

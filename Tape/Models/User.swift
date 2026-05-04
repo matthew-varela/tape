@@ -1,5 +1,11 @@
 import Foundation
 
+/// `UserRole` is the three-way axis the whole product divides users along.
+/// The role determines which tabs are shown, what actions are gated, and how
+/// the backend filters search results.
+///
+/// `Codable` with custom decoders below: the backend uses uppercased role
+/// strings (`"ATHLETE"`) but our raw values are lowercase, so we accept either.
 enum UserRole: String, Codable, CaseIterable, Identifiable {
     case athlete
     case recruiter
@@ -30,13 +36,68 @@ enum UserRole: String, Codable, CaseIterable, Identifiable {
         case .brand: "building.2"
         }
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if let value = UserRole(rawValue: raw) {
+            self = value
+        } else if let value = UserRole(rawValue: raw.lowercased()) {
+            self = value
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown UserRole: \(raw)"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue.uppercased())
+    }
 }
 
+/// Subscription tier. `.pro` unlocks the gated features (advanced filters,
+/// unlimited DMs, profile viewer list, pinning, etc).
+///
+/// The source of truth at runtime is StoreKit 2 (`SubscriptionManager`); the
+/// backend mirror stored on the User record is what `User.tier` reflects so
+/// that other clients (e.g. recipient devices reading message metadata) can
+/// render Pro-only badges without doing their own purchase lookup.
 enum SubscriptionTier: String, Codable {
     case free
     case pro
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let raw = try container.decode(String.self)
+        if let value = SubscriptionTier(rawValue: raw) {
+            self = value
+        } else if let value = SubscriptionTier(rawValue: raw.lowercased()) {
+            self = value
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unknown SubscriptionTier: \(raw)"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue.uppercased())
+    }
 }
 
+/// `User` is the canonical record of an account. The shape is intentionally
+/// wide — we'd rather one model with optional fields per role than three
+/// near-duplicates. Athlete fields (`gradYear`, `position`, etc.) are nil on
+/// recruiter/brand records and vice versa.
+///
+/// Custom `init(from:)` decoder uses `decodeIfPresent` for nearly every key
+/// so older servers that omit a field don't crash the client. Defaults are
+/// chosen to match the in-app "empty" state.
 struct User: Codable, Identifiable, Hashable {
     let id: String
     var email: String
@@ -60,12 +121,22 @@ struct User: Codable, Identifiable, Hashable {
     var organization: String?
     var title: String?
 
-    // Analytics
+    // Analytics (frontend-only convenience; backend may overwrite on /me).
     var profileViewsThisWeek: Int
     var profileViewerIDs: [String]
 
-    // Messaging
+    // Messaging gating counter (per calendar month, server-managed).
     var dmsSentThisMonth: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, email, displayName, role, tier
+        case profileImageURL = "profileImageUrl"
+        case highSchool, gradYear, sport, position, state
+        case height, weight, fortyYardDash, gpa
+        case organization, title
+        case profileViewsThisWeek, profileViewerIDs
+        case dmsSentThisMonth
+    }
 
     init(
         id: String = UUID().uuidString,
@@ -111,6 +182,32 @@ struct User: Codable, Identifiable, Hashable {
         self.dmsSentThisMonth = dmsSentThisMonth
     }
 
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        email = try c.decode(String.self, forKey: .email)
+        displayName = try c.decode(String.self, forKey: .displayName)
+        role = try c.decode(UserRole.self, forKey: .role)
+        tier = try c.decodeIfPresent(SubscriptionTier.self, forKey: .tier) ?? .free
+        profileImageURL = try c.decodeIfPresent(String.self, forKey: .profileImageURL)
+        highSchool = try c.decodeIfPresent(String.self, forKey: .highSchool)
+        gradYear = try c.decodeIfPresent(Int.self, forKey: .gradYear)
+        sport = try c.decodeIfPresent(String.self, forKey: .sport)
+        position = try c.decodeIfPresent(String.self, forKey: .position)
+        state = try c.decodeIfPresent(String.self, forKey: .state)
+        height = try c.decodeIfPresent(String.self, forKey: .height)
+        weight = try c.decodeIfPresent(String.self, forKey: .weight)
+        fortyYardDash = try c.decodeIfPresent(String.self, forKey: .fortyYardDash)
+        gpa = try c.decodeIfPresent(Double.self, forKey: .gpa)
+        organization = try c.decodeIfPresent(String.self, forKey: .organization)
+        title = try c.decodeIfPresent(String.self, forKey: .title)
+        profileViewsThisWeek = try c.decodeIfPresent(Int.self, forKey: .profileViewsThisWeek) ?? 0
+        profileViewerIDs = try c.decodeIfPresent([String].self, forKey: .profileViewerIDs) ?? []
+        dmsSentThisMonth = try c.decodeIfPresent(Int.self, forKey: .dmsSentThisMonth) ?? 0
+    }
+
+    /// Concatenated subtitle shown beneath the display name in profile cards.
+    /// Athletes get `HS | '26 | QB`, recruiters get `Title at Org`, etc.
     var subtitle: String {
         switch role {
         case .athlete:

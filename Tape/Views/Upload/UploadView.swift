@@ -1,9 +1,18 @@
 import PhotosUI
 import SwiftUI
 
+/// First step of the upload flow. The user picks a clip from their library
+/// (PhotosPicker) and we hand off to either the trimmer (if > 15s) or the
+/// tag selection screen.
+///
+/// Production wiring uses the real `APIVideoService` for the metadata POST
+/// and `FirebaseStorageService` for the actual byte transfer.
 struct UploadView: View {
     let currentUser: User
-    @State private var uploadVM = UploadViewModel()
+    @State private var uploadVM = UploadViewModel(
+        videoService: APIVideoService(),
+        storageService: FirebaseStorageService()
+    )
     @State private var selectedItem: PhotosPickerItem?
     @State private var showTrimmer = false
     @State private var showTagSelection = false

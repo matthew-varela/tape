@@ -1,5 +1,9 @@
 import SwiftUI
 
+/// Generic 3-column grid of video thumbnails. Used as a building block by
+/// the profile screen. Tapping a tile fires the `onVideoTap` callback so the
+/// containing view can decide what "open" means (full-screen player,
+/// navigation to a detail screen, etc).
 struct MediaGridView: View {
     let videos: [Video]
     let onVideoTap: (Video) -> Void

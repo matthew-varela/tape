@@ -1,0 +1,53 @@
+{
+  "identifier" : "Tape.Configuration",
+  "nonRenewingSubscriptions" : [],
+  "products" : [],
+  "settings" : {
+    "_compatibilityTimeRate" : 1,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "20EFA1B7",
+      "localizations" : [],
+      "name" : "Tape Pro",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "9.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "FF87AAB1",
+          "introductoryOffer" : {
+            "displayPrice" : "0.00",
+            "internalID" : "C1AD9DF3",
+            "numberOfPeriods" : 1,
+            "paymentMode" : "free",
+            "subscriptionPeriod" : "P1W"
+          },
+          "localizations" : [
+            {
+              "description" : "Unlock advanced filters, unlimited DMs, and more.",
+              "displayName" : "Tape Pro Monthly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.tape.pro.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Tape Pro Monthly",
+          "subscriptionGroupID" : "20EFA1B7",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

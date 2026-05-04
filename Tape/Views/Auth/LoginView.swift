@@ -1,5 +1,10 @@
 import SwiftUI
 
+/// `LoginView` is the email/password sign-in screen plus three demo
+/// quick-login buttons (one per role) that make demos and onboarding videos
+/// painless. Submission delegates to `AuthViewModel.signIn` — the auth state
+/// listener in `AuthViewModel` is what actually transitions the app to the
+/// authenticated screen, so this view just needs to fire the request.
 struct LoginView: View {
     @Environment(AuthViewModel.self) private var authVM
     @State private var email = ""

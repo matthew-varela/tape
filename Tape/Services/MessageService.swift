@@ -1,12 +1,30 @@
 import Foundation
 
+/// Messaging API contract. The protocol intentionally hides whether messages
+/// come from a polling REST endpoint, a WebSocket, or Firestore — the rest of
+/// the app only sees `[Conversation]` / `[Message]` snapshots.
+///
+/// In production we use polling (every 8 seconds in `InboxViewModel`); a
+/// future swap to WebSockets only requires changing the implementation, not
+/// any callers.
 protocol MessageServiceProtocol {
+    /// All conversations a user is in, sorted by most recent activity.
     func fetchConversations(for userID: String) async throws -> [Conversation]
+
+    /// All messages in a single conversation, oldest → newest.
     func fetchMessages(for conversationID: String) async throws -> [Message]
+
+    /// Persists a new message and returns the saved record (with the
+    /// server-issued ID and timestamp).
     func sendMessage(conversationID: String, senderID: String, text: String) async throws -> Message
+
+    /// Creates (or returns the existing) thread between two users. Idempotent
+    /// at the server: calling twice with the same pair returns the same row.
     func startConversation(initiatorID: String, recipientID: String, initiatorName: String, recipientName: String, initiatorRole: UserRole) async throws -> Conversation
 }
 
+/// In-memory implementation backed by `MockData`. Mutations are visible only
+/// to this instance — perfect for SwiftUI previews.
 final class MockMessageService: MessageServiceProtocol {
     private var conversations = MockData.conversations
     private var messages = MockData.messages

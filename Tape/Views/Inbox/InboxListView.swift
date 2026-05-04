@@ -1,9 +1,14 @@
 import SwiftUI
 import Kingfisher
 
+/// `InboxListView` is the conversation list. It loads the user's threads on
+/// appear, then polls every 8 seconds via `InboxViewModel` so new messages
+/// from other participants surface without a manual refresh. Pull-to-refresh
+/// fires the same fetch immediately for users who don't want to wait for
+/// the next poll cycle.
 struct InboxListView: View {
     let currentUser: User
-    @State private var inboxVM = InboxViewModel()
+    @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var selectedConversation: Conversation?
     @State private var showPaywall = false
 
@@ -38,6 +43,17 @@ struct InboxListView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .task {
+                // Initial load + start polling. The .task modifier
+                // automatically cancels its closure when the view disappears,
+                // so we explicitly stop polling on the way out as well to
+                // shut down the spawned Task immediately.
+                await inboxVM.loadConversations(userID: currentUser.id)
+                inboxVM.startConversationPolling(userID: currentUser.id)
+            }
+            .onDisappear {
+                inboxVM.stopPolling()
+            }
+            .refreshable {
                 await inboxVM.loadConversations(userID: currentUser.id)
             }
             .navigationDestination(item: $selectedConversation) { conversation in

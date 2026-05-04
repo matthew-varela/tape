@@ -1,6 +1,14 @@
 import SwiftUI
 import Kingfisher
 
+/// `VideoOverlayView` is the floating chrome on top of each feed cell —
+/// athlete name, tags, caption, and the right-rail action buttons (profile,
+/// bookmark, share). The overlay is layered over an `AVPlayer` and uses a
+/// dark gradient at the bottom to keep text legible regardless of the
+/// underlying video colors.
+///
+/// Each action receives a closure rather than calling into a view model
+/// directly, which keeps this view trivially previewable.
 struct VideoOverlayView: View {
     let video: Video
     let isBookmarked: Bool
