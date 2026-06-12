@@ -23,16 +23,39 @@ public class ScoutingBoardService {
         return boardRepo.findByOwnerIdOrderByCreatedAtDesc(ownerId);
     }
 
-    public ScoutingBoard createBoard(String ownerId, String name) {
-        User owner = userService.getUser(ownerId);
+    /**
+     * Creates a new board for the authenticated caller.
+     * The caller's uid is used as the owner id; client-supplied owner ids
+     * in the request body are not trusted.
+     */
+    public ScoutingBoard createBoard(String callerUid, String name) {
+        User owner = userService.getUser(callerUid);
         ScoutingBoard board = new ScoutingBoard();
         board.setOwner(owner);
         board.setName(name);
         return boardRepo.save(board);
     }
 
-    public ScoutingBoard addAthlete(String boardId, String athleteId) {
+    /** Renames a board. Caller must own the board. */
+    public ScoutingBoard renameBoard(String boardId, String newName, String callerUid) {
         ScoutingBoard board = getBoard(boardId);
+        requireOwner(board, callerUid);
+        board.setName(newName);
+        boardRepo.save(board);
+        return board;
+    }
+
+    /** Deletes a board. Caller must own the board. */
+    public void deleteBoard(String boardId, String callerUid) {
+        ScoutingBoard board = getBoard(boardId);
+        requireOwner(board, callerUid);
+        boardRepo.delete(board);
+    }
+
+    /** Adds an athlete to the board. Caller must own the board. */
+    public ScoutingBoard addAthlete(String boardId, String athleteId, String callerUid) {
+        ScoutingBoard board = getBoard(boardId);
+        requireOwner(board, callerUid);
         User athlete = userService.getUser(athleteId);
         if (board.getAthletes().stream().noneMatch(a -> a.getId().equals(athleteId))) {
             board.getAthletes().add(athlete);
@@ -41,14 +64,26 @@ public class ScoutingBoardService {
         return board;
     }
 
-    public ScoutingBoard removeAthlete(String boardId, String athleteId) {
+    /** Removes an athlete from the board. Caller must own the board. */
+    public ScoutingBoard removeAthlete(String boardId, String athleteId, String callerUid) {
         ScoutingBoard board = getBoard(boardId);
+        requireOwner(board, callerUid);
         board.getAthletes().removeIf(a -> a.getId().equals(athleteId));
-        return boardRepo.save(board);
+        boardRepo.save(board);
+        return board;
     }
 
+    // ── Internal ──────────────────────────────────────────────────────────────
+
     private ScoutingBoard getBoard(String boardId) {
-        return boardRepo.findById(boardId)
+        return boardRepo.findByIdWithOwner(boardId)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Board not found"));
+    }
+
+    private void requireOwner(ScoutingBoard board, String callerUid) {
+        if (!board.getOwner().getId().equals(callerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "You do not own this scouting board");
+        }
     }
 }

@@ -1,12 +1,15 @@
-cat > .gitignore << 'EOF'
 # Xcode
 *.xcuserstate
 xcuserdata/
 DerivedData/
 .DS_Store
+
 # Maven build output
 backend/target/
+
+# Secrets folder
+backend/secrets/
+
 # IDE
 .idea/
 *.iml
-EOF

@@ -1,11 +1,17 @@
 package com.tape.api.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.tape.api.enums.SubscriptionTier;
 import com.tape.api.enums.UserRole;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Hibernate lazy-proxy properties are excluded from serialization so Jackson
+ * does not fail when this entity is the lazy side of a @ManyToOne relationship.
+ */
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 @Entity
 @Table(name = "users")
 public class User {
@@ -14,7 +20,7 @@ public class User {
     @Column(length = 64)
     private String id;
 
-    @Column(nullable = false, unique = true)
+    @Column(unique = true)
     private String email;
 
     @Column(nullable = false)

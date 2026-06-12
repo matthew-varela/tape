@@ -1,7 +1,7 @@
 # Tape Backend Contract
 
-This document is the source of truth for every HTTP endpoint the iOS client
-expects. The base URL configured in `APIClient.swift` is:
+This document is the source of truth for every HTTP endpoint the iOS and
+future Android clients expect. The base URL configured in `APIClient.swift` is:
 
 ```
 https://tape-cf2k.onrender.com
@@ -10,15 +10,30 @@ https://tape-cf2k.onrender.com
 ## Conventions
 
 - All requests carry an `Authorization: Bearer <Firebase ID token>` header.
-  The server resolves the calling user from the token's `firebase_uid` claim.
+  The server resolves the calling user from the token's Firebase UID claim.
+- `User.id` equals the Firebase UID. There is no separate server-generated
+  user id — this keeps auth identity and app identity in sync across platforms.
 - All requests/responses are JSON. Dates are ISO-8601 strings (with or
   without fractional seconds — the client accepts both).
 - Enum values (`UserRole`, `SubscriptionTier`, `VideoCategory`) are sent
-  uppercase: `ATHLETE`, `RECRUITER`, `BRAND`, `FREE`, `PRO`, `TAPE`,
-  `CULTURE`.
-- IDs are server-generated UUID strings.
-- Errors should respond with a non-2xx status and a JSON body
-  `{ "message": "..." }`. The client surfaces `message` to the user.
+  uppercase: `ATHLETE`, `RECRUITER`, `BRAND`, `FREE`, `PRO`, `TAPE`, `CULTURE`.
+- Errors respond with a non-2xx status and a JSON body `{ "message": "..." }`.
+  The client surfaces `message` to the user.
+- **Authorization rule:** callers can only mutate resources they own. Any
+  client-supplied `initiatorId`, `senderId`, `athleteId`, or `ownerId` field
+  in a request body is accepted for documentation purposes but is overridden
+  by the verified token identity on the server. Both iOS and Android must
+  therefore send a valid Bearer token; they must never forge another user's id.
+
+---
+
+## Health
+
+### `GET /api/health`
+
+Public (no auth required). Returns server status.
+
+Response: `{ "status": "UP" }`
 
 ---
 
@@ -27,13 +42,13 @@ https://tape-cf2k.onrender.com
 ### `POST /api/auth/signup`
 
 Called after the client successfully creates a Firebase auth user. The server
-mints the persistent `User` record.
+mints the persistent `User` record using the **token uid** as the user id.
+The `firebaseUid` field in the body is accepted for documentation purposes
+but the server derives identity from the verified Bearer token.
 
 Request:
 ```json
 {
-  "firebaseUid": "string",
-  "email": "string",
   "displayName": "string",
   "role": "ATHLETE | RECRUITER | BRAND"
 }
@@ -41,11 +56,14 @@ Request:
 
 Response: `User`
 
+Errors:
+- `409` — a user with that Firebase UID already exists.
+
 ### `POST /api/auth/signin`
 
-Called after Firebase sign-in succeeds. The server returns the latest copy of
-the user record. (The bearer token authenticates the caller, so the body is
-just an extra hint.)
+Called after Firebase sign-in succeeds. The server looks up and returns the
+user record for the authenticated token. The `email` body field is ignored
+server-side; identity comes from the token.
 
 Request:
 ```json
@@ -54,20 +72,25 @@ Request:
 
 Response: `User`
 
+Errors:
+- `404` — no user record exists yet (client should call `/signup` first).
+
 ---
 
 ## Users / Profiles
 
 ### `GET /api/users/me`
 
-Returns the canonical `User` record for the caller. Used at app launch and
-after profile edits / subscription changes to refresh the in-memory state.
+Returns the canonical `User` record for the authenticated caller.
+Used at app launch and after profile edits or subscription changes.
 
 Response: `User`
 
 ### `GET /api/users/{id}`
 
 Returns a public `User` by id. Returns 404 if the user does not exist.
+
+Response: `User`
 
 ### `GET /api/users?role=ATHLETE`
 
@@ -77,44 +100,47 @@ Response: `[User]`
 
 ### `GET /api/users/search`
 
-Server-side full-text + filtered search.
+Server-side filtered search across all users.
 
 Query parameters (all optional):
-- `q`         — free text
-- `role`      — `ATHLETE | RECRUITER | BRAND`
-- `position`  — e.g. `QB`
-- `state`     — 2-letter state code
-- `sport`     — e.g. `Football`
+- `q`        — free text matched against display name, school, and sport
+- `role`     — `ATHLETE | RECRUITER | BRAND`
+- `position` — e.g. `QB`
+- `state`    — 2-letter state code
+- `sport`    — e.g. `Football`
 
 Response: `[User]`
 
 ### `PUT /api/users/{id}`
 
-Updates the user's profile. Body is the full `User` record. Returns the
-saved record.
+Updates the caller's own profile. `{id}` must match the authenticated Firebase
+UID; the server returns `403` if it does not.
+
+Request: Partial or full `User` JSON — only non-null fields are applied.
+
+Response: Updated `User`
 
 ### `GET /api/users/{id}/viewers`
 
-Returns the people who viewed the athlete's profile this week.
-**Pro feature** — server should return 403 for free callers (the client
-shows a paywall instead).
+Returns the users who viewed the athlete's profile this week.
+**Pro feature** — the server returns `403` for FREE-tier callers.
 
 Response: `[User]`
 
 ### `POST /api/users/{id}/dm-sent`
 
-Increments the `dmsSentThisMonth` counter on the user. Called by the iOS
-client immediately after a recruiter/brand sends a DM, so the free-tier
-10-DMs-per-month cap is enforceable instantly.
+Legacy client hook kept for backward compatibility. The DM counter is now
+enforced server-side when a message is sent; this endpoint is a no-op that
+always returns 204 for valid authenticated callers.
 
 Request: empty body.
 Response: 204 No Content.
 
 ### `POST /api/users/me/subscription`
 
-Sync hook called by the iOS `SubscriptionManager` after a StoreKit
-purchase / refund / renewal. The server should update `tier`, but treat
-StoreKit as the ultimate source of truth.
+Sync hook called after a StoreKit (iOS) or Play Billing (Android) purchase,
+refund, or renewal. The server updates the caller's `tier` and records the
+platform so billing history remains cross-platform.
 
 Request:
 ```json
@@ -135,7 +161,8 @@ Response: `[Video]`
 
 ### `GET /api/videos?athleteId={id}&category=TAPE|CULTURE`
 
-Lists an athlete's videos. `category` is optional.
+Lists an athlete's videos sorted pinned-first, then newest-first.
+`category` is optional.
 
 Response: `[Video]`
 
@@ -154,13 +181,13 @@ Response: `[Video]`
 
 ### `POST /api/videos`
 
-Persists video metadata after the iOS client has uploaded the file and
-thumbnail to Firebase Storage. The body carries the storage URLs.
+Persists video metadata after the client uploads the file and thumbnail to
+Firebase Storage. The body carries the Firebase Storage download URLs. The
+`athleteId` in the body is ignored — the authenticated caller is the athlete.
 
 Request:
 ```json
 {
-  "athleteId": "string",
   "videoUrl": "https://...",
   "thumbnailUrl": "https://...",
   "category": "TAPE | CULTURE",
@@ -173,13 +200,15 @@ Response: `Video`
 
 ### `PUT /api/videos/{id}/pin`
 
-Pins a video so it shows first in the athlete's profile grid. **Pro feature.**
+Pins a video so it shows first in the athlete's profile grid.
+**Pro feature** — returns `403` for FREE-tier callers. Caller must own the video.
 
 Response: `Video` (with `isPinned = true`).
 
 ### `PUT /api/videos/{id}/unpin`
 
-Removes the pin.
+Removes the pin on a video.
+**Pro feature** — returns `403` for FREE-tier callers. Caller must own the video.
 
 Response: `Video` (with `isPinned = false`).
 
@@ -189,7 +218,7 @@ Response: `Video` (with `isPinned = false`).
 
 ### `GET /api/users/{id}/bookmarks`
 
-Returns the IDs of videos the user has saved.
+Returns the IDs of videos the user has saved. Caller must be the same user.
 
 Response:
 ```json
@@ -198,7 +227,7 @@ Response:
 
 ### `POST /api/users/{id}/bookmarks`
 
-Adds a bookmark.
+Adds a bookmark. Caller must be the same user.
 
 Request:
 ```json
@@ -208,7 +237,7 @@ Response: 204 No Content.
 
 ### `DELETE /api/users/{id}/bookmarks/{videoId}`
 
-Removes a bookmark.
+Removes a bookmark. Caller must be the same user.
 
 Response: 204 No Content.
 
@@ -218,24 +247,26 @@ Response: 204 No Content.
 
 ### `GET /api/scouting-boards?ownerId={id}`
 
-All boards for a recruiter/brand.
+All boards for a recruiter/brand. The server uses the authenticated caller's
+uid as the owner; the `ownerId` query param is accepted for forward compat
+but the token takes precedence.
 
 Response: `[ScoutingBoard]` (with nested `owner` and `athletes` objects).
 
 ### `POST /api/scouting-boards`
 
-Creates a new board.
+Creates a new board. The board owner is the authenticated caller.
 
 Request:
 ```json
-{ "ownerId": "string", "name": "string" }
+{ "name": "string" }
 ```
 
 Response: `ScoutingBoard`.
 
 ### `PATCH /api/scouting-boards/{id}`
 
-Renames a board.
+Renames a board. Caller must own the board.
 
 Request:
 ```json
@@ -246,13 +277,13 @@ Response: `ScoutingBoard`.
 
 ### `DELETE /api/scouting-boards/{id}`
 
-Deletes a board.
+Deletes a board. Caller must own the board.
 
 Response: 204 No Content.
 
 ### `POST /api/scouting-boards/{id}/athletes`
 
-Adds an athlete to the board.
+Adds an athlete to the board. Caller must own the board.
 
 Request:
 ```json
@@ -263,7 +294,7 @@ Response: `ScoutingBoard`.
 
 ### `DELETE /api/scouting-boards/{id}/athletes/{athleteId}`
 
-Removes an athlete.
+Removes an athlete from the board. Caller must own the board.
 
 Response: `ScoutingBoard`.
 
@@ -271,21 +302,24 @@ Response: `ScoutingBoard`.
 
 ## Messaging
 
-### `GET /api/conversations?userId={id}`
+### `GET /api/conversations`
 
-All threads the user is in, sorted by `lastMessageDate` desc.
+All threads the caller is in, sorted by `lastMessageDate` desc.
 
 Response: `[Conversation]`.
 
 ### `GET /api/conversations/{id}/messages`
 
 All messages in a conversation, oldest → newest.
+Caller must be a participant.
 
 Response: `[Message]`.
 
 ### `POST /api/conversations/{id}/messages`
 
-Sends a new message.
+Sends a new message. The `senderId` in the body is accepted for documentation
+but the server uses the authenticated caller's uid. Free-tier users are
+limited to 10 DMs per month; returns `403` once the cap is reached.
 
 Request:
 ```json
@@ -297,6 +331,9 @@ Response: `Message`.
 ### `POST /api/conversations`
 
 Creates (or returns the existing) thread between two users. Idempotent.
+Athletes cannot initiate conversations (returns `403`).
+The `initiatorId` in the body is accepted for documentation but the server
+uses the authenticated caller's uid.
 
 Request:
 ```json
@@ -312,7 +349,7 @@ Response: `Conversation`.
 ### `User`
 ```json
 {
-  "id": "string",
+  "id": "string (Firebase UID)",
   "email": "string",
   "displayName": "string",
   "role": "ATHLETE | RECRUITER | BRAND",
@@ -329,8 +366,6 @@ Response: `Conversation`.
   "gpa": 3.8,
   "organization": "string?",
   "title": "string?",
-  "profileViewsThisWeek": 0,
-  "profileViewerIDs": ["string"],
   "dmsSentThisMonth": 0
 }
 ```
@@ -382,8 +417,6 @@ Response: `Conversation`.
 ```
 
 ### `ScoutingBoard`
-
-The server should return a nested form for ergonomics:
 ```json
 {
   "id": "string",
@@ -394,18 +427,51 @@ The server should return a nested form for ergonomics:
 }
 ```
 
-The client also accepts a flat form (`ownerId`, `athleteIds`) for tests.
-
 ---
 
 ## Storage
 
-Video files and avatar images are uploaded directly to Firebase Storage by
-the iOS client. The download URLs returned by Firebase are sent to the
-backend in the `POST /api/videos` and `PUT /api/users/{id}` payloads — the
-server never proxies media bytes.
+Video files and avatar images are uploaded **directly to Firebase Storage**
+by the iOS or Android client using the Firebase SDK. The download URLs
+returned by Firebase are sent to the backend in `POST /api/videos` and
+`PUT /api/users/{id}` payloads — the server never proxies media bytes.
 
 Object paths:
-- Videos:   `videos/{athleteId}/{uuid}.mp4`
-- Thumbs:   `thumbnails/{athleteId}/{uuid}.jpg`
-- Avatars:  `profileImages/{userId}/{uuid}.jpg`
+- Videos:    `videos/{athleteId}/{uuid}.mp4`
+- Thumbs:    `thumbnails/{athleteId}/{uuid}.jpg`
+- Avatars:   `profileImages/{userId}/{uuid}.jpg`
+
+There is no S3 / presigned-URL upload path for mobile clients.
+
+---
+
+## Error Responses
+
+All errors return a JSON body:
+```json
+{ "message": "Human-readable explanation" }
+```
+
+Common status codes:
+- `400` — invalid request body or parameters
+- `401` — missing or invalid Bearer token
+- `403` — valid token but insufficient permissions or tier
+- `404` — resource not found
+- `409` — conflict (e.g. user already exists)
+- `500` — unexpected server error
+
+---
+
+## Cross-Platform Notes
+
+The backend is designed to be platform-neutral. When an Android client is added:
+
+1. Use the same `Authorization: Bearer <Firebase ID token>` header with the
+   Firebase Android SDK.
+2. Upload media to Firebase Storage using the Android SDK; post the resulting
+   download URL to the same `POST /api/videos` endpoint.
+3. For subscriptions, call `POST /api/users/me/subscription` after a Google
+   Play Billing purchase. The server records the platform so billing history
+   is cross-platform.
+4. All JSON schemas, enum values, and error shapes are identical — no
+   platform-specific endpoints or response variations exist.

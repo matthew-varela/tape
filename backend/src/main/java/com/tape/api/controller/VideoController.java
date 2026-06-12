@@ -4,6 +4,7 @@ import com.tape.api.dto.VideoFeedResponse;
 import com.tape.api.dto.VideoPublishRequest;
 import com.tape.api.entity.Video;
 import com.tape.api.enums.VideoCategory;
+import com.tape.api.security.SecurityUtils;
 import com.tape.api.service.VideoService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
@@ -50,16 +51,31 @@ public class VideoController {
             .stream().map(videoService::toFeedResponse).toList();
     }
 
+    /**
+     * Publishes video metadata. The authenticated caller must be an ATHLETE;
+     * any {@code athleteId} body field is ignored — the token uid is the owner.
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public VideoFeedResponse publishVideo(@Valid @RequestBody VideoPublishRequest request) {
-        Video video = videoService.publishVideo(request);
+        String uid = SecurityUtils.requireFirebaseUid();
+        Video video = videoService.publishVideo(request, uid);
         return videoService.toFeedResponse(video);
     }
 
+    /** Pro feature. Caller must own the video. */
     @PutMapping("/{id}/pin")
-    public VideoFeedResponse togglePin(@PathVariable String id) {
-        Video video = videoService.togglePin(id);
+    public VideoFeedResponse pinVideo(@PathVariable String id) {
+        String uid = SecurityUtils.requireFirebaseUid();
+        Video video = videoService.pinVideo(id, uid);
+        return videoService.toFeedResponse(video);
+    }
+
+    /** Pro feature. Caller must own the video. */
+    @PutMapping("/{id}/unpin")
+    public VideoFeedResponse unpinVideo(@PathVariable String id) {
+        String uid = SecurityUtils.requireFirebaseUid();
+        Video video = videoService.unpinVideo(id, uid);
         return videoService.toFeedResponse(video);
     }
 }

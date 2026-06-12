@@ -7,6 +7,7 @@ import com.tape.api.dto.StartConversationRequest;
 import com.tape.api.entity.Conversation;
 import com.tape.api.entity.Message;
 import com.tape.api.entity.User;
+import com.tape.api.enums.SubscriptionTier;
 import com.tape.api.repository.ConversationRepository;
 import com.tape.api.repository.MessageRepository;
 import org.springframework.http.HttpStatus;
@@ -20,29 +21,39 @@ import java.util.Map;
 @Service
 public class MessageService {
 
+    /** Free-tier monthly DM cap. */
+    private static final int FREE_DM_MONTHLY_CAP = 10;
+
     private final ConversationRepository conversationRepo;
     private final MessageRepository messageRepo;
     private final UserService userService;
 
-    public MessageService(ConversationRepository conversationRepo, MessageRepository messageRepo, UserService userService) {
+    public MessageService(ConversationRepository conversationRepo,
+                          MessageRepository messageRepo,
+                          UserService userService) {
         this.conversationRepo = conversationRepo;
         this.messageRepo = messageRepo;
         this.userService = userService;
     }
 
-    public List<Conversation> getConversations(String userId) {
-        return conversationRepo.findByParticipant(userId);
+    public List<Conversation> getConversations(String callerUid) {
+        return conversationRepo.findByParticipant(callerUid);
     }
 
+    /**
+     * Creates (or returns the existing) thread. Athletes cannot initiate.
+     * The initiator id comes from the verified token, not the request body.
+     */
     @Transactional
-    public Conversation startConversation(StartConversationRequest req) {
-        return conversationRepo.findByParticipants(req.initiatorId(), req.recipientId())
+    public Conversation startConversation(StartConversationRequest req, String callerUid) {
+        return conversationRepo.findByParticipants(callerUid, req.recipientId())
             .orElseGet(() -> {
-                User initiator = userService.getUser(req.initiatorId());
+                User initiator = userService.getUser(callerUid);
                 User recipient = userService.getUser(req.recipientId());
 
                 if (initiator.getRole() == com.tape.api.enums.UserRole.ATHLETE) {
-                    throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Athletes cannot initiate conversations");
+                    throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Athletes cannot initiate conversations");
                 }
 
                 Conversation conv = new Conversation();
@@ -53,25 +64,45 @@ public class MessageService {
             });
     }
 
-    public List<Message> getMessages(String conversationId) {
+    public List<Message> getMessages(String conversationId, String callerUid) {
+        Conversation conv = getConversation(conversationId);
+        requireParticipant(conv, callerUid);
         return messageRepo.findByConversationIdOrderBySentAtAsc(conversationId);
     }
 
+    /**
+     * Sends a message from the authenticated caller.
+     *
+     * The {@code senderId} body field is accepted for backward compatibility
+     * with existing iOS clients but the server always uses the token uid as the
+     * actual sender identity. Free-tier users are capped at
+     * {@value FREE_DM_MONTHLY_CAP} DMs per month enforced here — client-side
+     * checks are treated as a UX hint only.
+     */
     @Transactional
-    public Message sendMessage(String conversationId, SendMessageRequest req) {
-        Conversation conv = conversationRepo.findById(conversationId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
+    public Message sendMessage(String conversationId, SendMessageRequest req, String callerUid) {
+        Conversation conv = getConversation(conversationId);
+        requireParticipant(conv, callerUid);
 
-        if (!conv.hasParticipant(req.senderId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not a participant");
+        User sender = userService.getUser(callerUid);
+
+        // Enforce DM cap server-side for free tier users.
+        if (sender.getTier() == SubscriptionTier.FREE
+                && sender.getDmsSentThisMonth() >= FREE_DM_MONTHLY_CAP) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "Monthly DM limit reached. Upgrade to Pro for unlimited messaging.");
         }
 
-        User sender = userService.getUser(req.senderId());
         Message msg = new Message();
         msg.setConversation(conv);
         msg.setSender(sender);
         msg.setText(req.text());
         Message saved = messageRepo.save(msg);
+
+        // Increment the monthly counter for free-tier senders server-side.
+        if (sender.getTier() == SubscriptionTier.FREE) {
+            userService.incrementDmsSent(callerUid);
+        }
 
         conv.setLastMessage(req.text());
         conv.setLastMessageDate(Instant.now());
@@ -107,5 +138,19 @@ public class MessageService {
             m.getSentAt(),
             m.isRead()
         );
+    }
+
+    // ── Internal ──────────────────────────────────────────────────────────────
+
+    private Conversation getConversation(String conversationId) {
+        return conversationRepo.findById(conversationId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Conversation not found"));
+    }
+
+    private void requireParticipant(Conversation conv, String callerUid) {
+        if (!conv.hasParticipant(callerUid)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "You are not a participant in this conversation");
+        }
     }
 }
