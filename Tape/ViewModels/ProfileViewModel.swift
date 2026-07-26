@@ -15,23 +15,29 @@ final class ProfileViewModel {
     var athlete: User?
     var tapeVideos: [Video] = []
     var cultureVideos: [Video] = []
+    var savedVideos: [Video] = []
     var profileViewers: [User] = []
     var followCounts: FollowCounts = .empty
+    /// Whether the signed-in recruiter has this athlete on their shortlist.
+    var isAthleteSaved = false
     var isLoading = false
     var errorMessage: String?
 
     private let profileService: ProfileServiceProtocol
     private let videoService: VideoServiceProtocol
     private let followService: FollowServiceProtocol
+    private let savedAthleteService: SavedAthleteServiceProtocol
 
     init(
         profileService: ProfileServiceProtocol = MockProfileService(),
         videoService: VideoServiceProtocol = MockVideoService(),
-        followService: FollowServiceProtocol = MockFollowService()
+        followService: FollowServiceProtocol = MockFollowService(),
+        savedAthleteService: SavedAthleteServiceProtocol = MockSavedAthleteService()
     ) {
         self.profileService = profileService
         self.videoService = videoService
         self.followService = followService
+        self.savedAthleteService = savedAthleteService
     }
 
     func loadProfile(athleteID: String) async {
@@ -73,6 +79,45 @@ final class ProfileViewModel {
             }
         } catch {
             followCounts = previous
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    // MARK: - Saved
+
+    /// Clips the signed-in user has bookmarked. Owner-only, so this is loaded
+    /// lazily when the Saved tab is first opened.
+    func loadSavedVideos(userID: String) async {
+        guard savedVideos.isEmpty else { return }
+        do {
+            savedVideos = try await videoService.fetchBookmarkedVideos(userID: userID)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func refreshSavedVideos(userID: String) async {
+        savedVideos = []
+        await loadSavedVideos(userID: userID)
+    }
+
+    func loadSavedState(athleteID: String) async {
+        let saved = (try? await savedAthleteService.fetchSavedAthletes()) ?? []
+        isAthleteSaved = saved.contains { $0.id == athleteID }
+    }
+
+    /// Optimistic shortlist toggle, rolled back if the write fails.
+    func toggleSavedAthlete(athleteID: String) async {
+        let wasSaved = isAthleteSaved
+        isAthleteSaved.toggle()
+        do {
+            if wasSaved {
+                try await savedAthleteService.unsave(athleteID: athleteID)
+            } else {
+                try await savedAthleteService.save(athleteID: athleteID)
+            }
+        } catch {
+            isAthleteSaved = wasSaved
             errorMessage = error.localizedDescription
         }
     }

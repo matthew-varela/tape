@@ -66,17 +66,23 @@ struct Conversation: Codable, Identifiable, Hashable {
         initiatedByRole = try c.decodeIfPresent(UserRole.self, forKey: .initiatedByRole) ?? .recruiter
     }
 
+    /// The other person in this thread — used to open their profile from the
+    /// inbox or chat title.
+    func otherParticipantID(currentUserID: String) -> String {
+        participantIDs.first { $0 != currentUserID } ?? ""
+    }
+
     /// Looks up the *other* participant's display name. The inbox list and
     /// chat title both use this so a thread shows "Jane Coach", never "you".
     func otherParticipantName(currentUserID: String) -> String {
-        let otherID = participantIDs.first { $0 != currentUserID } ?? ""
+        let otherID = otherParticipantID(currentUserID: currentUserID)
         return participantNames[otherID] ?? "Unknown"
     }
 
     /// Same idea for the avatar URL (returns nil if the other participant
     /// has no image set).
     func otherParticipantImageURL(currentUserID: String) -> String? {
-        let otherID = participantIDs.first { $0 != currentUserID } ?? ""
+        let otherID = otherParticipantID(currentUserID: currentUserID)
         return participantImageURLs[otherID] ?? nil
     }
 }

@@ -90,6 +90,10 @@ final class APIVideoService: VideoServiceProtocol {
         return wrapped.videoIds
     }
 
+    func fetchBookmarkedVideos(userID: String) async throws -> [Video] {
+        try await client.get("/api/users/\(userID)/bookmarks/videos")
+    }
+
     func addBookmark(userID: String, videoID: String) async throws {
         struct Body: Encodable { let videoId: String }
         try await client.postVoid(

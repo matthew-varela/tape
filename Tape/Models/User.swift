@@ -121,9 +121,16 @@ struct User: Codable, Identifiable, Hashable {
     var fortyYardDash: String?
     var gpa: Double?
 
+    /// Ranked shortlist of programs the athlete wants to play for. Values are
+    /// `School.id`s resolved against the bundled `SchoolCatalog`.
+    var targetSchoolIDs: [String]
+
     // Recruiter/Brand-specific
     var organization: String?
     var title: String?
+
+    /// `School.id` of the program a recruiter coaches for.
+    var schoolId: String?
 
     // Analytics (frontend-only convenience; backend may overwrite on /me).
     var profileViewsThisWeek: Int
@@ -139,7 +146,8 @@ struct User: Codable, Identifiable, Hashable {
         case profileImageURL = "profileImageUrl"
         case highSchool, gradYear, sport, position, state
         case height, weight, fortyYardDash, gpa
-        case organization, title
+        case targetSchoolIDs = "targetSchoolIds"
+        case organization, title, schoolId
         case profileViewsThisWeek, profileViewerIDs
         case dmsSentThisMonth
     }
@@ -162,8 +170,10 @@ struct User: Codable, Identifiable, Hashable {
         weight: String? = nil,
         fortyYardDash: String? = nil,
         gpa: Double? = nil,
+        targetSchoolIDs: [String] = [],
         organization: String? = nil,
         title: String? = nil,
+        schoolId: String? = nil,
         profileViewsThisWeek: Int = 0,
         profileViewerIDs: [String] = [],
         dmsSentThisMonth: Int = 0
@@ -185,8 +195,10 @@ struct User: Codable, Identifiable, Hashable {
         self.weight = weight
         self.fortyYardDash = fortyYardDash
         self.gpa = gpa
+        self.targetSchoolIDs = targetSchoolIDs
         self.organization = organization
         self.title = title
+        self.schoolId = schoolId
         self.profileViewsThisWeek = profileViewsThisWeek
         self.profileViewerIDs = profileViewerIDs
         self.dmsSentThisMonth = dmsSentThisMonth
@@ -211,23 +223,32 @@ struct User: Codable, Identifiable, Hashable {
         weight = try c.decodeIfPresent(String.self, forKey: .weight)
         fortyYardDash = try c.decodeIfPresent(String.self, forKey: .fortyYardDash)
         gpa = try c.decodeIfPresent(Double.self, forKey: .gpa)
+        targetSchoolIDs = try c.decodeIfPresent([String].self, forKey: .targetSchoolIDs) ?? []
         organization = try c.decodeIfPresent(String.self, forKey: .organization)
         title = try c.decodeIfPresent(String.self, forKey: .title)
+        schoolId = try c.decodeIfPresent(String.self, forKey: .schoolId)
         profileViewsThisWeek = try c.decodeIfPresent(Int.self, forKey: .profileViewsThisWeek) ?? 0
         profileViewerIDs = try c.decodeIfPresent([String].self, forKey: .profileViewerIDs) ?? []
         dmsSentThisMonth = try c.decodeIfPresent(Int.self, forKey: .dmsSentThisMonth) ?? 0
     }
 
     /// Concatenated subtitle shown beneath the display name in profile cards.
-    /// Athletes get `HS | '26 | QB`, recruiters get `Title at Org`, etc.
+    /// Athletes get `HS | '26 | QB`. Coaches get `Position · School` when a
+    /// school is set, otherwise fall back to title/org.
     var subtitle: String {
         switch role {
         case .athlete:
             let parts = [highSchool, gradYear.map { "'\(String($0).suffix(2))" }, position].compactMap { $0 }
             return parts.joined(separator: " | ")
         case .recruiter:
+            if let school = SchoolCatalog.school(id: schoolId) {
+                return [title, school.name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+            }
             return [title, organization].compactMap { $0 }.joined(separator: " at ")
         case .brand:
+            if let school = SchoolCatalog.school(id: schoolId) {
+                return school.name
+            }
             return organization ?? ""
         }
     }

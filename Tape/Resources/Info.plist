@@ -22,8 +22,6 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
-	<key>NSCameraUsageDescription</key>
-	<string>Tape needs camera access to record highlights</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Tape needs microphone access to capture audio</string>
 	<key>NSPhotoLibraryUsageDescription</key>

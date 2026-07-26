@@ -14,7 +14,7 @@ protocol VideoServiceProtocol {
     /// page when they follow nobody.
     func fetchFollowingFeedVideos(page: Int) async throws -> [Video]
 
-    /// Records one play. The server ignores self-views.
+    /// Records one play. Counted per play, not per unique viewer.
     func recordView(videoID: String) async throws
 
     func fetchVideos(for athleteID: String) async throws -> [Video]
@@ -25,6 +25,10 @@ protocol VideoServiceProtocol {
     // MARK: Bookmarks (per-user)
     /// Returns the list of video IDs the user has saved.
     func fetchBookmarks(userID: String) async throws -> [String]
+
+    /// Full records for the user's saved clips, newest save first, so the
+    /// profile's Saved tab can render a grid directly.
+    func fetchBookmarkedVideos(userID: String) async throws -> [Video]
 
     /// Persists a bookmark.
     func addBookmark(userID: String, videoID: String) async throws
@@ -111,6 +115,12 @@ final class MockVideoService: VideoServiceProtocol {
     func fetchBookmarks(userID: String) async throws -> [String] {
         try await Task.sleep(for: .milliseconds(100))
         return Array(bookmarks[userID] ?? [])
+    }
+
+    func fetchBookmarkedVideos(userID: String) async throws -> [Video] {
+        try await Task.sleep(for: .milliseconds(100))
+        let saved = bookmarks[userID] ?? []
+        return videos.filter { saved.contains($0.id) }
     }
 
     func addBookmark(userID: String, videoID: String) async throws {

@@ -44,10 +44,6 @@ final class FeedViewModel {
     private var followingPage = 0
     private var followingHasMore = true
 
-    /// Guards against counting the same clip twice while the viewer scrolls
-    /// back and forth within one session.
-    private var recordedViewIDs: Set<String> = []
-
     private static let pageSize = 10
 
     init(
@@ -176,11 +172,11 @@ final class FeedViewModel {
 
     // MARK: - View counting
 
-    /// Counts one play, at most once per clip per session. Failures are
-    /// swallowed — a missed analytics ping should never interrupt playback.
+    /// Counts one play. Views are not deduplicated by viewer — watching the
+    /// same clip ten times is ten views, the way play counts work everywhere
+    /// else. Failures are swallowed; a missed analytics ping should never
+    /// interrupt playback.
     func recordView(_ video: Video) async {
-        guard !recordedViewIDs.contains(video.id) else { return }
-        recordedViewIDs.insert(video.id)
         bumpViewCount(for: video.id)
         do {
             try await videoService.recordView(videoID: video.id)

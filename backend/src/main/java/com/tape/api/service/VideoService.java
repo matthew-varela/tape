@@ -63,17 +63,14 @@ public class VideoService {
     }
 
     /**
-     * Records one play. Views by the owner don't count, so an athlete can't
-     * inflate their own numbers by rewatching their profile.
+     * Records one play. Views are counted per play, not per unique viewer, so
+     * the same person rewatching a clip ten times is ten views.
      */
     @Transactional
-    public void recordView(String videoId, String callerUid) {
-        Video video = videoRepo.findById(videoId)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found"));
-        if (video.getAthlete().getId().equals(callerUid)) {
-            return;
+    public void recordView(String videoId) {
+        if (videoRepo.incrementViewCount(videoId) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found");
         }
-        videoRepo.incrementViewCount(videoId);
     }
 
     /**

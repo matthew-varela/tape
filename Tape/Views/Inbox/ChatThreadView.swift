@@ -15,6 +15,7 @@ struct ChatThreadView: View {
     @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var messageText = ""
     @State private var showPaywall = false
+    @State private var navigateToProfile = false
 
     // Moderation
     private let moderationService = APIModerationService()
@@ -23,7 +24,7 @@ struct ChatThreadView: View {
     @State private var showReportConfirmation = false
 
     private var otherParticipantID: String {
-        conversation.participantIDs.first { $0 != currentUser.id } ?? ""
+        conversation.otherParticipantID(currentUserID: currentUser.id)
     }
 
     var body: some View {
@@ -55,12 +56,26 @@ struct ChatThreadView: View {
                 inputBar
             }
         }
-        .navigationTitle(conversation.otherParticipantName(currentUserID: currentUser.id))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button {
+                    navigateToProfile = true
+                } label: {
+                    Text(conversation.otherParticipantName(currentUserID: currentUser.id))
+                        .font(.headline)
+                        .foregroundStyle(.white)
+                }
+                .accessibilityHint("View profile")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    Button {
+                        navigateToProfile = true
+                    } label: {
+                        Label("View Profile", systemImage: "person.circle")
+                    }
                     Button(role: .destructive) { showReportDialog = true } label: {
                         Label("Report", systemImage: "flag")
                     }
@@ -72,6 +87,9 @@ struct ChatThreadView: View {
                         .foregroundStyle(.white)
                 }
             }
+        }
+        .navigationDestination(isPresented: $navigateToProfile) {
+            AthleteProfileView(athleteID: otherParticipantID, currentUser: currentUser)
         }
         .task {
             await inboxVM.loadMessages(conversationID: conversation.id)

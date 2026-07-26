@@ -181,9 +181,10 @@ Response: `[Video]`
 
 ### `POST /api/videos/{id}/view`
 
-Records one play. Self-views are ignored server-side, so an athlete rewatching
-their own clip does not inflate the counter. Clients call this at most once per
-clip per session. Returns `204 No Content`.
+Records one play. Views are counted **per play, not per unique viewer** — the
+same person watching a clip 100 times is 100 views, including the athlete
+watching their own clip. Clients call this every time a clip becomes the active
+one in the feed. Returns `204 No Content`.
 
 ### `GET /api/videos?athleteId={id}&category=TAPE|CULTURE`
 
@@ -251,6 +252,13 @@ Response:
 { "videoIds": ["string"] }
 ```
 
+### `GET /api/users/{id}/bookmarks/videos`
+
+Returns full `Video` records for the user's saved clips, newest save first, so
+the profile's Saved tab renders in one request. Caller must be the same user.
+
+Response: `[Video]`
+
 ### `POST /api/users/{id}/bookmarks`
 
 Adds a bookmark. Caller must be the same user.
@@ -266,6 +274,60 @@ Response: 204 No Content.
 Removes a bookmark. Caller must be the same user.
 
 Response: 204 No Content.
+
+---
+
+## Saved Players
+
+A recruiter's or brand's flat shortlist of athletes — the profile equivalent of
+a video bookmark. Distinct from scouting boards, which are named, deliberately
+organised groups. The scout is always the authenticated caller, so none of these
+routes take a user id.
+
+### `GET /api/saved-athletes`
+
+The caller's saved athletes, newest save first.
+
+Response: `[User]`
+
+### `POST /api/saved-athletes`
+
+Saves a player. Idempotent — saving an already-saved athlete is a no-op.
+`403` if the caller is an athlete or either party has blocked the other;
+`400` if the target is not an athlete.
+
+Request:
+```json
+{ "athleteId": "string" }
+```
+Response: 204 No Content.
+
+### `DELETE /api/saved-athletes/{athleteId}`
+
+Removes a player from the shortlist. Idempotent.
+
+Response: 204 No Content.
+
+---
+
+## Schools
+
+School identity is **not** stored in Postgres. The catalog of FBS programs
+(name, mascot, conference, brand color, logo URL) ships with each client as a
+static bundled asset — `Tape/Resources/fbs-schools.json` on iOS — and the
+database persists only the selected ids (`User.schoolId`,
+`User.targetSchoolIds`).
+
+Rationale: the list is static reference data that changes roughly once a year
+with conference realignment. Bundling it means the picker and every profile
+header render instantly with no network round trip and no join on profile reads,
+and fixing a logo or a rename ships with a client update instead of a migration.
+There is no `GET /api/schools` endpoint. If a third client ever needs the
+catalog without a release cycle, promote the same JSON to a served static
+resource; the stored ids don't change.
+
+Ids are ESPN team ids, which is also what the logo CDN is keyed on
+(`https://a.espncdn.com/i/teamlogos/ncaa/500/{id}.png`).
 
 ---
 
@@ -475,11 +537,19 @@ Response:
   "weight": "string?",
   "fortyYardDash": "string?",
   "gpa": 3.8,
+  "targetSchoolIds": ["string"],
   "organization": "string?",
   "title": "string?",
+  "schoolId": "string?",
   "dmsSentThisMonth": 0
 }
 ```
+
+`targetSchoolIds` (athletes) is a **ranked** list — index 0 is the athlete's top
+choice. `schoolId` (recruiters) is the program they coach for. Both hold ids
+from the static school catalog described under [Schools](#schools); the server
+never validates them against a table, so clients must tolerate an unknown id by
+rendering nothing rather than erroring.
 
 ### `Video`
 ```json

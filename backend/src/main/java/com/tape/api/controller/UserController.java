@@ -2,11 +2,13 @@ package com.tape.api.controller;
 
 import com.tape.api.dto.BookmarkResponse;
 import com.tape.api.dto.SubscriptionSyncRequest;
+import com.tape.api.dto.VideoFeedResponse;
 import com.tape.api.entity.User;
 import com.tape.api.enums.UserRole;
 import com.tape.api.security.SecurityUtils;
 import com.tape.api.service.FirebaseAccountService;
 import com.tape.api.service.UserService;
+import com.tape.api.service.VideoService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
@@ -26,10 +28,14 @@ public class UserController {
 
     private final UserService userService;
     private final FirebaseAccountService firebaseAccountService;
+    private final VideoService videoService;
 
-    public UserController(UserService userService, FirebaseAccountService firebaseAccountService) {
+    public UserController(UserService userService,
+                          FirebaseAccountService firebaseAccountService,
+                          VideoService videoService) {
         this.userService = userService;
         this.firebaseAccountService = firebaseAccountService;
+        this.videoService = videoService;
     }
 
     // ── Session hydration ─────────────────────────────────────────────────────
@@ -121,6 +127,18 @@ public class UserController {
         String uid = SecurityUtils.requireFirebaseUid();
         List<String> videoIds = userService.getBookmarkedVideoIds(id, uid);
         return new BookmarkResponse(videoIds);
+    }
+
+    /**
+     * Full video records for the user's saved clips, so the profile's Saved tab
+     * can render a grid without N lookups by id.
+     */
+    @GetMapping("/{id}/bookmarks/videos")
+    public List<VideoFeedResponse> getBookmarkedVideos(@PathVariable String id) {
+        String uid = SecurityUtils.requireFirebaseUid();
+        return userService.getBookmarkedVideos(id, uid).stream()
+            .map(videoService::toFeedResponse)
+            .toList();
     }
 
     @PostMapping("/{id}/bookmarks")

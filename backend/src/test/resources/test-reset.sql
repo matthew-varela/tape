@@ -3,6 +3,8 @@
 DELETE FROM reports;
 DELETE FROM blocks;
 DELETE FROM follows;
+DELETE FROM saved_athletes;
+DELETE FROM athlete_target_schools;
 DELETE FROM scouting_board_athletes;
 DELETE FROM scouting_boards;
 DELETE FROM bookmarks;

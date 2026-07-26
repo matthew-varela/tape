@@ -21,6 +21,10 @@ struct VideoPlayerView: UIViewRepresentable {
     }
 
     func updateUIView(_ uiView: PlayerUIView, context: Context) {
+        // Reassigning the same player detaches and reattaches the layer, which
+        // blanks the current frame. SwiftUI calls this on every update, so the
+        // identity check is what keeps scrolling from flashing black.
+        guard uiView.playerLayer.player !== player else { return }
         uiView.playerLayer.player = player
     }
 
@@ -52,8 +56,13 @@ struct VideoPlayerView: UIViewRepresentable {
 /// during long scroll sessions.
 @Observable
 final class VideoPlayerManager {
-    private(set) var players: [String: AVPlayer] = [:]
-    private var loopObservers: [String: Any] = [:]
+    /// Deliberately not observed. `player(for:)` is called from `body` while
+    /// SwiftUI renders a cell, and writing to observed state during rendering
+    /// invalidates the view mid-update. Views don't need to react to this
+    /// dictionary anyway — they receive the player as a return value.
+    @ObservationIgnored private var players: [String: AVPlayer] = [:]
+    @ObservationIgnored private var loopObservers: [String: Any] = [:]
+
     var activeVideoID: String?
 
     /// Mute preference survives relaunches the way it does in other feeds.
@@ -91,20 +100,31 @@ final class VideoPlayerManager {
         return player
     }
 
-    /// Makes one clip the playing one. Restarting from the top only happens
-    /// when the active clip actually changes, so scrolling back to a cell that
-    /// is already active doesn't jump the playhead.
+    /// Makes one clip the playing one.
+    ///
+    /// Every other player is stopped, not just the previously active one.
+    /// Pausing only the last-known-active player left any clip that had been
+    /// started by an off-screen cell running, which is how audio from the clip
+    /// above or below kept playing over the one on screen.
     func makeActive(videoID: String) {
-        if activeVideoID != videoID {
-            if let currentID = activeVideoID {
-                players[currentID]?.pause()
-            }
+        let changed = activeVideoID != videoID
+
+        for (id, player) in players where id != videoID {
+            player.pause()
+        }
+
+        if changed {
             activeVideoID = videoID
             isPaused = false
             players[videoID]?.seek(to: .zero)
         }
         players[videoID]?.isMuted = isMuted
         players[videoID]?.play()
+    }
+
+    /// Warms a player so the clip has buffered by the time it's scrolled to.
+    func prepare(_ video: Video) {
+        _ = player(for: video)
     }
 
     /// Resumes the active clip after the feed comes back on screen (tab switch,
@@ -145,8 +165,18 @@ final class VideoPlayerManager {
         }
     }
 
+    /// Tears down players outside the given window.
+    ///
+    /// The active clip is never evicted regardless of what's passed in. Tearing
+    /// down the on-screen player calls `replaceCurrentItem(with: nil)` on a
+    /// layer that's still mounted, which leaves a permanently black cell while
+    /// some other player keeps producing sound.
     func cleanup(keepingIDs: Set<String>) {
-        let toRemove = players.keys.filter { !keepingIDs.contains($0) }
+        var keep = keepingIDs
+        if let activeVideoID {
+            keep.insert(activeVideoID)
+        }
+        let toRemove = players.keys.filter { !keep.contains($0) }
         for id in toRemove {
             players[id]?.pause()
             players[id]?.replaceCurrentItem(with: nil)

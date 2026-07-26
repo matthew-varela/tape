@@ -1,4 +1,5 @@
 import SwiftUI
+import Kingfisher
 
 /// `ContentView` is the top-level routing switch. It reads the auth state
 /// from the environment and shows one of three things:
@@ -84,6 +85,12 @@ struct CoachBrandProfileView: View {
     let currentUser: User
     @Environment(AuthViewModel.self) private var authVM
 
+    @State private var savedVM = SavedPlayersViewModel(
+        savedAthleteService: APISavedAthleteService()
+    )
+
+    private var school: School? { SchoolCatalog.school(id: currentUser.schoolId) }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -94,17 +101,12 @@ struct CoachBrandProfileView: View {
                         // Profile header
                         VStack(spacing: 12) {
                             if let urlString = currentUser.profileImageURL, let url = URL(string: urlString) {
-                                AsyncImage(url: url) { image in
-                                    image.resizable()
-                                        .scaledToFill()
-                                } placeholder: {
-                                    Image(systemName: "person.circle.fill")
-                                        .font(.system(size: 80))
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(width: 100, height: 100)
-                                .clipShape(Circle())
-                                .overlay(Circle().stroke(Color.tapeRed, lineWidth: 3))
+                                KFImage(url)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 100, height: 100)
+                                    .clipShape(Circle())
+                                    .overlay(Circle().stroke(Color.tapeRed, lineWidth: 3))
                             } else {
                                 Image(systemName: "person.circle.fill")
                                     .font(.system(size: 80))
@@ -114,10 +116,6 @@ struct CoachBrandProfileView: View {
                             Text(currentUser.displayName)
                                 .font(.title2.bold())
                                 .foregroundStyle(.white)
-
-                            Text(currentUser.subtitle)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
 
                             Text(currentUser.role.displayName)
                                 .font(.caption.bold())
@@ -129,23 +127,59 @@ struct CoachBrandProfileView: View {
                         }
                         .padding(.top, 20)
 
+                        // School / team / position — the main identity signal
+                        // for a coach. Edit Profile is how this gets set and
+                        // persisted.
+                        if school != nil {
+                            CoachSchoolBanner(
+                                schoolID: currentUser.schoolId,
+                                position: currentUser.title
+                            )
+                        } else {
+                            Text("Add your school and coaching position so athletes know who you are.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
+
+                        NavigationLink {
+                            EditProfileView()
+                        } label: {
+                            Label(
+                                school == nil ? "Set Up Profile" : "Edit Profile",
+                                systemImage: "pencil"
+                            )
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(school == nil ? Color.tapeRed : Color.tapeCardBg)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(
+                                        school == nil ? Color.clear : Color.white.opacity(0.2),
+                                        lineWidth: 1
+                                    )
+                            }
+                        }
+                        .padding(.horizontal, 20)
+
                         // Scouting boards shortcut
                         if currentUser.role == .recruiter || currentUser.role == .brand {
                             NavigationLink {
+                                SavedPlayersView(currentUser: currentUser)
+                            } label: {
+                                shortcutRow(icon: "bookmark.fill", title: "Saved Players",
+                                            badge: savedVM.athletes.isEmpty ? nil : "\(savedVM.athletes.count)")
+                            }
+                            .padding(.horizontal, 20)
+
+                            NavigationLink {
                                 ScoutingBoardView(currentUser: currentUser)
                             } label: {
-                                HStack {
-                                    Image(systemName: "star.fill")
-                                        .foregroundStyle(Color.tapeRed)
-                                    Text("My Scouting Boards")
-                                        .foregroundStyle(.white)
-                                    Spacer()
-                                    Image(systemName: "chevron.right")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding()
-                                .background(Color.tapeCardBg)
-                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                shortcutRow(icon: "star.fill", title: "My Scouting Boards", badge: nil)
                             }
                             .padding(.horizontal, 20)
                         }
@@ -153,12 +187,6 @@ struct CoachBrandProfileView: View {
                         // Account info
                         VStack(spacing: 1) {
                             infoRow(icon: "envelope.fill", label: "Email", value: currentUser.email)
-                            if let org = currentUser.organization {
-                                infoRow(icon: "building.2.fill", label: "Organization", value: org)
-                            }
-                            if let title = currentUser.title {
-                                infoRow(icon: "briefcase.fill", label: "Title", value: title)
-                            }
                             infoRow(icon: "crown.fill", label: "Plan",
                                     value: currentUser.tier == .pro ? "Pro" : "Free")
                         }
@@ -180,7 +208,35 @@ struct CoachBrandProfileView: View {
                     }
                 }
             }
+            .task {
+                await savedVM.load()
+            }
         }
+    }
+
+    private func shortcutRow(icon: String, title: String, badge: String?) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundStyle(Color.tapeRed)
+            Text(title)
+                .foregroundStyle(.white)
+            Spacer()
+            if let badge {
+                Text(badge)
+                    .font(.caption.bold())
+                    .monospacedDigit()
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color.tapeRed.opacity(0.2))
+                    .foregroundStyle(Color.tapeRed)
+                    .clipShape(Capsule())
+            }
+            Image(systemName: "chevron.right")
+                .foregroundStyle(.secondary)
+        }
+        .padding()
+        .background(Color.tapeCardBg)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
     private func infoRow(icon: String, label: String, value: String) -> some View {

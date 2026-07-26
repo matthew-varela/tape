@@ -2,22 +2,20 @@ import PhotosUI
 import SwiftUI
 import Kingfisher
 
-/// `EditProfileView` lets the signed-in user update their profile fields and
-/// avatar. The save flow is:
-///   1. (Optional) Upload the newly-picked avatar image to Firebase Storage,
-///      get back a download URL.
-///   2. PUT the merged `User` record to the backend.
-///   3. Ask `AuthViewModel` to re-fetch `/api/users/me` so the updated record
-///      propagates everywhere through the SwiftUI environment.
+/// Lets the signed-in user update their avatar and profile fields.
 ///
-/// We construct an `APIProfileService` and `FirebaseStorageService` once per
-/// view instance via `@State` — Swift will keep them alive for the view's
-/// lifetime, and SwiftUI won't recreate them on every re-render.
+/// Athletes get vitals + a top-schools shortlist. Coaches/brands set their
+/// school, team affiliation (derived from the school), and coaching position.
+/// Every role can set a profile picture.
+///
+/// Save flow:
+///   1. (Optional) Upload a newly-picked avatar to Firebase Storage.
+///   2. PUT the merged `User` record to the backend.
+///   3. Refresh `/api/users/me` so the change propagates through the env.
 struct EditProfileView: View {
     @Environment(AuthViewModel.self) private var authVM
     @Environment(\.dismiss) private var dismiss
 
-    // Form state bound to the text fields.
     @State private var displayName = ""
     @State private var highSchool = ""
     @State private var gradYear = ""
@@ -28,13 +26,19 @@ struct EditProfileView: View {
     @State private var weight = ""
     @State private var fortyYardDash = ""
     @State private var gpa = ""
+    /// Coaching role at the program — "Head Coach", "Recruiting Coordinator".
+    @State private var coachPosition = ""
 
-    // Avatar state.
+    @State private var targetSchoolIDs: [String] = []
+    /// Single-id list for the coach's school so it shares `SchoolPickerView`.
+    @State private var coachSchoolIDs: [String] = []
+    @State private var showSchoolPicker = false
+    private let maxTargetSchools = 5
+
     @State private var profileImageURL: String?
     @State private var pickedImageItem: PhotosPickerItem?
     @State private var pickedImage: UIImage?
 
-    // Save flow state.
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -46,6 +50,12 @@ struct EditProfileView: View {
         return nil
     }
 
+    private var isAthlete: Bool { currentUser?.role == .athlete }
+
+    private var coachSchool: School? {
+        SchoolCatalog.school(id: coachSchoolIDs.first)
+    }
+
     var body: some View {
         ZStack {
             Color.tapeDarkBg.ignoresSafeArea()
@@ -54,19 +64,12 @@ struct EditProfileView: View {
                 VStack(spacing: 20) {
                     avatarPicker
                     formField("Display Name", text: $displayName)
-                    formField("High School", text: $highSchool)
-                    formField("Graduation Year", text: $gradYear)
-                        .keyboardType(.numberPad)
-                    formField("Sport", text: $sport)
-                    formField("Position", text: $position)
-                    formField("State", text: $state)
-                    formField("Height (e.g. 6'2\")", text: $height)
-                    formField("Weight (lbs)", text: $weight)
-                        .keyboardType(.numberPad)
-                    formField("40-Yard Dash (s)", text: $fortyYardDash)
-                        .keyboardType(.decimalPad)
-                    formField("GPA", text: $gpa)
-                        .keyboardType(.decimalPad)
+
+                    if isAthlete {
+                        athleteFields
+                    } else {
+                        coachBrandFields
+                    }
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -85,14 +88,132 @@ struct EditProfileView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .onAppear(perform: loadFromUser)
         .onChange(of: pickedImageItem) { _, newValue in
-            // PhotosPickerItem holds a reference; we have to actually load the
-            // image data on a background task before we can show or upload it.
             guard let newValue else { return }
             Task { await loadPickedImage(newValue) }
         }
+        .sheet(isPresented: $showSchoolPicker) {
+            if isAthlete {
+                SchoolPickerView(
+                    title: "Top Schools",
+                    maxSelection: maxTargetSchools,
+                    selection: $targetSchoolIDs
+                )
+            } else {
+                SchoolPickerView(
+                    title: "Your School",
+                    maxSelection: 1,
+                    selection: $coachSchoolIDs
+                )
+            }
+        }
     }
 
-    // MARK: - Subviews
+    // MARK: - Role-specific fields
+
+    @ViewBuilder
+    private var athleteFields: some View {
+        formField("High School", text: $highSchool)
+        formField("Graduation Year", text: $gradYear)
+            .keyboardType(.numberPad)
+        formField("Sport", text: $sport)
+        formField("Position", text: $position)
+        formField("State", text: $state)
+        formField("Height (e.g. 6'2\")", text: $height)
+        formField("Weight (lbs)", text: $weight)
+            .keyboardType(.numberPad)
+        formField("40-Yard Dash (s)", text: $fortyYardDash)
+            .keyboardType(.decimalPad)
+        formField("GPA", text: $gpa)
+            .keyboardType(.decimalPad)
+        topSchoolsField
+    }
+
+    @ViewBuilder
+    private var coachBrandFields: some View {
+        coachSchoolField
+
+        if let school = coachSchool {
+            // Team is derived from the school catalog — no free-text needed.
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Team")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    SchoolLogo(school: school, size: 28)
+                    Text(school.mascot)
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding()
+                .background(Color.tapeCardBg)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+
+        formField("Position (e.g. Head Coach)", text: $coachPosition)
+    }
+
+    private var coachSchoolField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("School")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                showSchoolPicker = true
+            } label: {
+                HStack(spacing: 10) {
+                    if let school = coachSchool {
+                        SchoolLogo(school: school, size: 30)
+                        Text(school.name)
+                            .foregroundStyle(.white)
+                    } else {
+                        Text("Select your school")
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(Color.tapeCardBg)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    private var topSchoolsField: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Top Schools")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button {
+                showSchoolPicker = true
+            } label: {
+                HStack(spacing: 10) {
+                    if targetSchoolIDs.isEmpty {
+                        Text("Pick up to \(maxTargetSchools) programs")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: -8) {
+                            ForEach(SchoolCatalog.schools(ids: targetSchoolIDs)) { school in
+                                SchoolLogo(school: school, size: 30)
+                            }
+                        }
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .foregroundStyle(.secondary)
+                }
+                .padding()
+                .background(Color.tapeCardBg)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+
+    // MARK: - Shared subviews
 
     private var avatarPicker: some View {
         PhotosPicker(selection: $pickedImageItem, matching: .images) {
@@ -102,12 +223,13 @@ struct EditProfileView: View {
                     .clipShape(Circle())
                     .overlay(Circle().stroke(Color.tapeRed, lineWidth: 3))
 
-                Image(systemName: "pencil.circle.fill")
+                Image(systemName: "camera.circle.fill")
                     .font(.title)
                     .foregroundStyle(Color.tapeRed)
                     .background(Circle().fill(Color.tapeDarkBg))
             }
         }
+        .accessibilityLabel("Change profile photo")
         .padding(.top, 8)
     }
 
@@ -174,6 +296,9 @@ struct EditProfileView: View {
         weight = user.weight ?? ""
         fortyYardDash = user.fortyYardDash ?? ""
         gpa = user.gpa.map { String(format: "%.1f", $0) } ?? ""
+        coachPosition = user.title ?? ""
+        targetSchoolIDs = user.targetSchoolIDs
+        coachSchoolIDs = [user.schoolId].compactMap { $0 }
         profileImageURL = user.profileImageURL
     }
 
@@ -195,7 +320,6 @@ struct EditProfileView: View {
         defer { isSaving = false }
 
         do {
-            // 1. Upload the new avatar (if one was picked) and capture the URL.
             if let pickedImage {
                 let url = try await storageService.uploadProfileImage(
                     image: pickedImage,
@@ -204,24 +328,29 @@ struct EditProfileView: View {
                 user.profileImageURL = url.absoluteString
             }
 
-            // 2. Apply the form values onto the User record.
             user.displayName = displayName
-            user.highSchool = nilIfEmpty(highSchool)
-            user.gradYear = Int(gradYear)
-            user.sport = nilIfEmpty(sport)
-            user.position = nilIfEmpty(position)
-            user.state = nilIfEmpty(state)
-            user.height = nilIfEmpty(height)
-            user.weight = nilIfEmpty(weight)
-            user.fortyYardDash = nilIfEmpty(fortyYardDash)
-            user.gpa = Double(gpa)
+            if isAthlete {
+                user.highSchool = nilIfEmpty(highSchool)
+                user.gradYear = Int(gradYear)
+                user.sport = nilIfEmpty(sport)
+                user.position = nilIfEmpty(position)
+                user.state = nilIfEmpty(state)
+                user.height = nilIfEmpty(height)
+                user.weight = nilIfEmpty(weight)
+                user.fortyYardDash = nilIfEmpty(fortyYardDash)
+                user.gpa = Double(gpa)
+                user.targetSchoolIDs = targetSchoolIDs
+            } else {
+                // Persist schoolId even when cleared — empty string tells the
+                // backend to wipe the affiliation; null would leave it alone.
+                let schoolID = coachSchoolIDs.first
+                user.schoolId = schoolID ?? ""
+                user.title = nilIfEmpty(coachPosition) ?? ""
+                user.organization = SchoolCatalog.school(id: schoolID)?.name ?? ""
+            }
 
-            // 3. Persist to the backend.
             try await profileService.updateProfile(user)
-
-            // 4. Refresh the env-wide auth user so every screen sees the change.
             await authVM.refreshCurrentUser()
-
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

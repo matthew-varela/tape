@@ -8,6 +8,8 @@ import jakarta.persistence.*;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.Period;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -53,9 +55,23 @@ public class User {
     private String fortyYardDash;
     private Double gpa;
 
+    /**
+     * Ranked shortlist of programs an athlete wants to play for. Values are
+     * ids from the static school catalog shipped with the clients.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "athlete_target_schools", joinColumns = @JoinColumn(name = "user_id"))
+    @OrderColumn(name = "sort_order")
+    @Column(name = "school_id", length = 16)
+    private List<String> targetSchoolIds = new ArrayList<>();
+
     // Recruiter / Brand fields
     private String organization;
     private String title;
+
+    /** Catalog id of the program a recruiter coaches for. */
+    @Column(length = 16)
+    private String schoolId;
 
     private int dmsSentThisMonth;
 
@@ -137,6 +153,12 @@ public class User {
 
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
+
+    public List<String> getTargetSchoolIds() { return targetSchoolIds; }
+    public void setTargetSchoolIds(List<String> targetSchoolIds) { this.targetSchoolIds = targetSchoolIds; }
+
+    public String getSchoolId() { return schoolId; }
+    public void setSchoolId(String schoolId) { this.schoolId = schoolId; }
 
     public int getDmsSentThisMonth() { return dmsSentThisMonth; }
     public void setDmsSentThisMonth(int dmsSentThisMonth) { this.dmsSentThisMonth = dmsSentThisMonth; }

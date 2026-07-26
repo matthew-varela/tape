@@ -16,6 +16,7 @@ import com.tape.api.repository.FollowRepository;
 import com.tape.api.repository.MessageRepository;
 import com.tape.api.repository.ProfileViewRepository;
 import com.tape.api.repository.ReportRepository;
+import com.tape.api.repository.SavedAthleteRepository;
 import com.tape.api.repository.ScoutingBoardRepository;
 import com.tape.api.repository.SubscriptionRepository;
 import com.tape.api.repository.UserRepository;
@@ -42,6 +43,7 @@ public class UserService {
     private final BlockRepository blockRepo;
     private final ReportRepository reportRepo;
     private final FollowRepository followRepo;
+    private final SavedAthleteRepository savedAthleteRepo;
 
     public UserService(UserRepository userRepo,
                        ProfileViewRepository profileViewRepo,
@@ -53,7 +55,8 @@ public class UserService {
                        ScoutingBoardRepository scoutingBoardRepo,
                        BlockRepository blockRepo,
                        ReportRepository reportRepo,
-                       FollowRepository followRepo) {
+                       FollowRepository followRepo,
+                       SavedAthleteRepository savedAthleteRepo) {
         this.userRepo = userRepo;
         this.profileViewRepo = profileViewRepo;
         this.bookmarkRepo = bookmarkRepo;
@@ -65,6 +68,7 @@ public class UserService {
         this.blockRepo = blockRepo;
         this.reportRepo = reportRepo;
         this.followRepo = followRepo;
+        this.savedAthleteRepo = savedAthleteRepo;
     }
 
     // ── Account creation ────────────────────────────────────────────────────
@@ -130,8 +134,9 @@ public class UserService {
         blockRepo.deleteByUser(uid);
         reportRepo.deleteByReporterId(uid);
 
-        // Social graph edges in both directions.
+        // Social graph edges and shortlists in both directions.
         followRepo.deleteByUser(uid);
+        savedAthleteRepo.deleteByUser(uid);
 
         // Remaining direct references to the user.
         profileViewRepo.deleteByUser(uid);
@@ -188,8 +193,26 @@ public class UserService {
         if (updates.getWeight() != null) user.setWeight(updates.getWeight());
         if (updates.getFortyYardDash() != null) user.setFortyYardDash(updates.getFortyYardDash());
         if (updates.getGpa() != null) user.setGpa(updates.getGpa());
-        if (updates.getOrganization() != null) user.setOrganization(updates.getOrganization());
-        if (updates.getTitle() != null) user.setTitle(updates.getTitle());
+        if (updates.getOrganization() != null) {
+            String organization = updates.getOrganization().isBlank() ? null : updates.getOrganization();
+            user.setOrganization(organization);
+        }
+        if (updates.getTitle() != null) {
+            String title = updates.getTitle().isBlank() ? null : updates.getTitle();
+            user.setTitle(title);
+        }
+        // Empty string clears the affiliation (clients send "" when the coach
+        // removes their school). Null still means "leave unchanged".
+        if (updates.getSchoolId() != null) {
+            String schoolId = updates.getSchoolId().isBlank() ? null : updates.getSchoolId();
+            user.setSchoolId(schoolId);
+        }
+        // An empty list is a meaningful value here (clear the shortlist), so
+        // only a missing key skips the update.
+        if (updates.getTargetSchoolIds() != null) {
+            user.getTargetSchoolIds().clear();
+            user.getTargetSchoolIds().addAll(updates.getTargetSchoolIds());
+        }
         return userRepo.save(user);
     }
 
@@ -236,6 +259,15 @@ public class UserService {
         return bookmarkRepo.findByUserIdOrderByCreatedAtDesc(userId)
             .stream()
             .map(b -> b.getVideo().getId())
+            .toList();
+    }
+
+    /** Saved clips as full records, newest save first. Owner-only. */
+    public List<Video> getBookmarkedVideos(String userId, String callerUid) {
+        requireSelf(userId, callerUid, "view bookmarks");
+        return bookmarkRepo.findByUserIdOrderByCreatedAtDesc(userId)
+            .stream()
+            .map(Bookmark::getVideo)
             .toList();
     }
 

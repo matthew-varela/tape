@@ -18,6 +18,9 @@ struct FeedView: View {
         followService: APIFollowService()
     )
     @State private var playerManager = VideoPlayerManager()
+    /// The clip the scroll view is currently settled on. Source of truth for
+    /// which player is allowed to run.
+    @State private var visibleVideoID: String?
     @State private var showFilters = false
     @State private var showPaywall = false
     @State private var navigateToProfile: String?
@@ -61,15 +64,27 @@ struct FeedView: View {
                 await feedVM.loadInitialFeed()
                 await feedVM.loadBookmarks(userID: currentUser.id)
                 await feedVM.loadFollowing()
-                if let first = feedVM.displayedVideos.first {
-                    playerManager.makeActive(videoID: first.id)
-                }
+                // Setting the anchor is enough — the scroll position binding
+                // fires `activate` for us. Calling it here too would count the
+                // first clip's view twice.
+                visibleVideoID = feedVM.displayedVideos.first?.id
             }
             .onChange(of: feedVM.feedMode) { _, mode in
                 playerManager.pauseAll()
+                // The new stream has its own cells; drop the old anchor so the
+                // scroll position binding can't point at a clip that no longer
+                // exists in the list.
+                visibleVideoID = nil
                 if mode == .following {
                     Task { await feedVM.loadFollowingFeed() }
                 }
+            }
+            .onChange(of: feedVM.displayedVideos.map(\.id)) { _, ids in
+                // First page of a stream (or a refresh) landing: start the top
+                // clip, since no scroll happens to trigger the position change.
+                // Appending a page leaves the anchor valid, so it's a no-op.
+                if let anchor = visibleVideoID, ids.contains(anchor) { return }
+                visibleVideoID = ids.first
             }
             .onReceive(NotificationCenter.default.publisher(for: .tapeVideoPublished)) { _ in
                 Task { await feedVM.refresh() }
@@ -226,11 +241,16 @@ struct FeedView: View {
         .padding(.top, 8)
     }
 
+    /// Playback is driven by `scrollPosition`, which reports the cell the feed
+    /// is actually settled on. Per-cell `onAppear` was the wrong signal: a
+    /// `LazyVStack` instantiates cells before they're on screen, so the clip
+    /// below the visible one would start itself and play its audio over the top
+    /// of whatever the viewer was actually looking at.
     private var verticalFeed: some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 0) {
-                ForEach(Array(feedVM.displayedVideos.enumerated()), id: \.element.id) { index, video in
-                    feedCell(video: video, index: index)
+                ForEach(feedVM.displayedVideos) { video in
+                    feedCell(video: video)
                         .containerRelativeFrame([.horizontal, .vertical])
                         .id(video.id)
                 }
@@ -238,29 +258,41 @@ struct FeedView: View {
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $visibleVideoID)
         .ignoresSafeArea()
         .refreshable { await feedVM.refresh() }
+        .onChange(of: visibleVideoID) { _, newID in
+            guard let newID else { return }
+            activate(videoID: newID)
+        }
     }
 
-    private func feedCell(video: Video, index: Int) -> some View {
+    /// Single place that reacts to the feed settling on a clip: start it, stop
+    /// everything else, count the view, warm the neighbours, and page ahead.
+    private func activate(videoID: String) {
+        playerManager.makeActive(videoID: videoID)
+
+        let videos = feedVM.displayedVideos
+        guard let index = videos.firstIndex(where: { $0.id == videoID }) else { return }
+        feedVM.currentIndex = index
+
+        Task { await feedVM.recordView(videos[index]) }
+
+        // Warm the next clip so it isn't buffering when it's scrolled to.
+        if index + 1 < videos.count {
+            playerManager.prepare(videos[index + 1])
+        }
+        playerManager.cleanup(keepingIDs: nearbyVideoIDs(around: index))
+
+        // Prefetch well before the end so scrolling never stalls.
+        if index >= videos.count - 3 {
+            Task { await feedVM.loadNextPage() }
+        }
+    }
+
+    private func feedCell(video: Video) -> some View {
         ZStack {
             VideoPlayerView(player: playerManager.player(for: video))
-                .onAppear {
-                    playerManager.makeActive(videoID: video.id)
-                    feedVM.currentIndex = index
-
-                    playerManager.cleanup(keepingIDs: nearbyVideoIDs(around: index))
-
-                    Task { await feedVM.recordView(video) }
-
-                    // Prefetch well before the end so scrolling never stalls.
-                    if index >= feedVM.displayedVideos.count - 3 {
-                        Task { await feedVM.loadNextPage() }
-                    }
-                }
-                .onDisappear {
-                    playerManager.pause(videoID: video.id)
-                }
 
             // Paused indicator, shown only for the clip the viewer paused.
             if playerManager.isPaused && playerManager.activeVideoID == video.id {

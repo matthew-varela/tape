@@ -75,12 +75,12 @@ public class VideoController {
         return videoService.toFeedResponse(video);
     }
 
-    /** Records one play. Self-views are ignored server-side. */
+    /** Records one play. Counted per play, not per unique viewer. */
     @PostMapping("/{id}/view")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void recordView(@PathVariable String id) {
-        String uid = SecurityUtils.requireFirebaseUid();
-        videoService.recordView(id, uid);
+        SecurityUtils.requireFirebaseUid();
+        videoService.recordView(id);
     }
 
     /** Pro feature. Caller must own the video. */

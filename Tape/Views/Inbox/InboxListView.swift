@@ -10,6 +10,7 @@ struct InboxListView: View {
     let currentUser: User
     @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var selectedConversation: Conversation?
+    @State private var navigateToProfile: String?
     @State private var showPaywall = false
 
     var body: some View {
@@ -59,6 +60,9 @@ struct InboxListView: View {
             .navigationDestination(item: $selectedConversation) { conversation in
                 ChatThreadView(conversation: conversation, currentUser: currentUser)
             }
+            .navigationDestination(item: $navigateToProfile) { userID in
+                AthleteProfileView(athleteID: userID, currentUser: currentUser)
+            }
             .sheet(isPresented: $showPaywall) {
                 ProPaywallSheet(userRole: currentUser.role)
             }
@@ -68,12 +72,8 @@ struct InboxListView: View {
     private var conversationList: some View {
         List {
             ForEach(inboxVM.conversations) { conversation in
-                Button {
-                    selectedConversation = conversation
-                } label: {
-                    conversationRow(conversation)
-                }
-                .listRowBackground(Color.tapeCardBg)
+                conversationRow(conversation)
+                    .listRowBackground(Color.tapeCardBg)
             }
         }
         .listStyle(.plain)
@@ -81,49 +81,68 @@ struct InboxListView: View {
     }
 
     private func conversationRow(_ conversation: Conversation) -> some View {
-        HStack(spacing: 14) {
-            let imageURL = conversation.otherParticipantImageURL(currentUserID: currentUser.id)
-            if let urlString = imageURL, let url = URL(string: urlString) {
-                KFImage(url)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 52, height: 52)
-                    .clipShape(Circle())
-            } else {
-                Image(systemName: "person.circle.fill")
-                    .font(.system(size: 48))
-                    .foregroundStyle(.secondary)
+        let otherID = conversation.otherParticipantID(currentUserID: currentUser.id)
+
+        return HStack(spacing: 14) {
+            // Avatar opens their profile; the rest of the row opens the chat.
+            Button {
+                navigateToProfile = otherID
+            } label: {
+                avatar(for: conversation)
             }
+            .buttonStyle(.plain)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(conversation.otherParticipantName(currentUserID: currentUser.id))
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                    Spacer()
-                    Text(conversation.lastMessageDate.relativeFormatted)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack {
-                    Text(conversation.lastMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Spacer()
-                    if conversation.unreadCount > 0 {
-                        Text("\(conversation.unreadCount)")
-                            .font(.caption2.bold())
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .background(Color.tapeRed)
+            Button {
+                selectedConversation = conversation
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(conversation.otherParticipantName(currentUserID: currentUser.id))
+                            .font(.headline)
                             .foregroundStyle(.white)
-                            .clipShape(Capsule())
+                        Spacer()
+                        Text(conversation.lastMessageDate.relativeFormatted)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    HStack {
+                        Text(conversation.lastMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        Spacer()
+                        if conversation.unreadCount > 0 {
+                            Text("\(conversation.unreadCount)")
+                                .font(.caption2.bold())
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(Color.tapeRed)
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                        }
                     }
                 }
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func avatar(for conversation: Conversation) -> some View {
+        let imageURL = conversation.otherParticipantImageURL(currentUserID: currentUser.id)
+        if let urlString = imageURL, let url = URL(string: urlString) {
+            KFImage(url)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .clipShape(Circle())
+        } else {
+            Image(systemName: "person.circle.fill")
+                .font(.system(size: 48))
+                .foregroundStyle(.secondary)
+                .frame(width: 52, height: 52)
+        }
     }
 }

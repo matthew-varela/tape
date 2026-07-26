@@ -40,6 +40,7 @@ struct VideoOverlayView: View {
                     Text(video.athleteName)
                         .font(.headline.bold())
                         .foregroundStyle(.white)
+                        .onTapGesture(perform: onProfileTap)
 
                     Text("\(video.athleteSchool) '\(String(video.athleteGradYear).suffix(2)) | \(video.athletePosition)")
                         .font(.subheadline)

@@ -68,19 +68,20 @@ struct SettingsView: View {
                     }
                     .listRowBackground(Color.tapeCardBg)
 
-                    if currentUser?.role == .athlete {
-                        Section {
-                            NavigationLink {
-                                EditProfileView()
-                            } label: {
-                                Label("Edit Profile & Vitals", systemImage: "pencil.circle")
-                                    .foregroundStyle(.white)
-                            }
-                        } header: {
-                            Text("Profile")
+                    Section {
+                        NavigationLink {
+                            EditProfileView()
+                        } label: {
+                            Label(
+                                currentUser?.role == .athlete ? "Edit Profile & Vitals" : "Edit Profile",
+                                systemImage: "pencil.circle"
+                            )
+                            .foregroundStyle(.white)
                         }
-                        .listRowBackground(Color.tapeCardBg)
+                    } header: {
+                        Text("Profile")
                     }
+                    .listRowBackground(Color.tapeCardBg)
 
                     // App
                     Section {

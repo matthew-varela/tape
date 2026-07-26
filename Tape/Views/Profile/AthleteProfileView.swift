@@ -6,6 +6,25 @@ import Kingfisher
 /// videos (split into Tape and Culture/NIL tabs), and — when viewing your
 /// own profile — analytics like profile viewers.
 ///
+/// Sections of the profile grid. `saved` is the viewer's own bookmarked clips
+/// and is therefore only offered on their own profile.
+enum ProfileTab: String, CaseIterable, Identifiable {
+    case tape = "Tape"
+    case culture = "Culture"
+    case saved = "Saved"
+
+    var id: String { rawValue }
+    var title: String { rawValue }
+
+    var emptyMessage: String {
+        switch self {
+        case .tape: "No tape yet"
+        case .culture: "No culture clips yet"
+        case .saved: "Nothing saved yet — tap Save on any clip in the feed"
+        }
+    }
+}
+
 /// Two key Pro-gated interactions live here:
 ///   - Pinning your own clip (long-press the tile),
 ///   - Tapping the profile-views badge to see exactly who viewed you.
@@ -15,10 +34,11 @@ struct AthleteProfileView: View {
     @State private var profileVM = ProfileViewModel(
         profileService: APIProfileService(),
         videoService: APIVideoService(),
-        followService: APIFollowService()
+        followService: APIFollowService(),
+        savedAthleteService: APISavedAthleteService()
     )
     @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
-    @State private var selectedTab: VideoCategory = .tape
+    @State private var selectedTab: ProfileTab = .tape
     @State private var selectedVideo: Video?
     @State private var navigateToChat: Conversation?
     @State private var showPaywall = false
@@ -33,6 +53,17 @@ struct AthleteProfileView: View {
 
     private var isOwnProfile: Bool { currentUser.id == athleteID }
 
+    /// Recruiters and brands can shortlist athletes; athletes cannot.
+    private var canSaveAthlete: Bool {
+        !isOwnProfile && currentUser.role != .athlete && profileVM.athlete?.role == .athlete
+    }
+
+    /// The Saved tab holds the viewer's own bookmarks, so it's meaningless on
+    /// someone else's profile.
+    private var tabs: [ProfileTab] {
+        isOwnProfile ? ProfileTab.allCases : [.tape, .culture]
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -45,8 +76,13 @@ struct AthleteProfileView: View {
                         VStack(spacing: 0) {
                             profileHeader(athlete)
                             followRow(athlete)
-                            VitalsDashboard(athlete: athlete)
-                            messageButton(athlete)
+                            if athlete.role == .athlete {
+                                VitalsDashboard(athlete: athlete)
+                                TopSchoolsRow(schoolIDs: athlete.targetSchoolIDs)
+                            } else {
+                                CoachSchoolBanner(schoolID: athlete.schoolId, position: athlete.title)
+                            }
+                            actionButtons(athlete)
                             mediaTabs
                             mediaGrid
                         }
@@ -59,6 +95,9 @@ struct AthleteProfileView: View {
             .task {
                 await profileVM.loadProfile(athleteID: athleteID)
                 await profileVM.loadFollowCounts(athleteID: athleteID)
+                if canSaveAthlete {
+                    await profileVM.loadSavedState(athleteID: athleteID)
+                }
                 if isOwnProfile {
                     // Profile viewers list is only relevant for the owner.
                     // Backend should 403 if anyone else asks; we still load
@@ -104,7 +143,7 @@ struct AthleteProfileView: View {
                 ProPaywallSheet(userRole: currentUser.role)
             }
             .sheet(isPresented: $showViewersSheet) {
-                ProfileViewersSheet(viewers: profileVM.profileViewers)
+                ProfileViewersSheet(viewers: profileVM.profileViewers, currentUser: currentUser)
                     .presentationDetents([.medium, .large])
             }
             .confirmationDialog("Report User", isPresented: $showReportDialog, titleVisibility: .visible) {
@@ -172,9 +211,13 @@ struct AthleteProfileView: View {
                 .font(.title2.bold())
                 .foregroundStyle(.white)
 
-            Text(athlete.subtitle)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            // Coaches with a school get School/Team/Position in the banner
+            // below — don't double up a weaker subtitle here.
+            if athlete.role == .athlete || SchoolCatalog.school(id: athlete.schoolId) == nil {
+                Text(athlete.subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
 
             // Profile views badge: tappable for the owner. Free → paywall;
             // Pro → list sheet.
@@ -233,6 +276,25 @@ struct AthleteProfileView: View {
                     }
                 }
                 .padding(.horizontal, 20)
+            } else {
+                // Own profile: Edit sits here so athletes don't have to dig
+                // through Settings just to change a photo or vitals.
+                NavigationLink {
+                    EditProfileView()
+                } label: {
+                    Label("Edit Profile", systemImage: "pencil")
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(Color.tapeCardBg)
+                        .foregroundStyle(.white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        }
+                }
+                .padding(.horizontal, 20)
             }
         }
         .padding(.bottom, 20)
@@ -251,27 +313,62 @@ struct AthleteProfileView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// Save-player and message actions.
+    ///
+    /// Messaging stays recruiter-only because the backend refuses conversations
+    /// started by athletes — many are minors. Everything else on this screen is
+    /// identical regardless of who's looking.
     @ViewBuilder
-    private func messageButton(_ athlete: User) -> some View {
-        if currentUser.role != .athlete && currentUser.id != athlete.id {
-            Button {
-                Task {
-                    if let conv = await inboxVM.startConversation(
-                        initiator: currentUser,
-                        recipientID: athlete.id,
-                        recipientName: athlete.displayName
-                    ) {
-                        navigateToChat = conv
+    private func actionButtons(_ athlete: User) -> some View {
+        let canMessage = currentUser.role != .athlete
+            && currentUser.id != athlete.id
+            && athlete.role == .athlete
+
+        if canMessage || canSaveAthlete {
+            HStack(spacing: 12) {
+                if canMessage {
+                    Button {
+                        Task {
+                            if let conv = await inboxVM.startConversation(
+                                initiator: currentUser,
+                                recipientID: athlete.id,
+                                recipientName: athlete.displayName
+                            ) {
+                                navigateToChat = conv
+                            }
+                        }
+                    } label: {
+                        Label("Message", systemImage: "bubble.left.fill")
+                            .fontWeight(.semibold)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.tapeRed)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                 }
-            } label: {
-                Label("Message Player", systemImage: "bubble.left.fill")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.tapeRed)
-                    .foregroundStyle(.white)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                if canSaveAthlete {
+                    Button {
+                        Task { await profileVM.toggleSavedAthlete(athleteID: athleteID) }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Label(
+                            profileVM.isAthleteSaved ? "Saved" : "Save",
+                            systemImage: profileVM.isAthleteSaved ? "bookmark.fill" : "bookmark"
+                        )
+                        .fontWeight(.semibold)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.tapeCardBg)
+                        .foregroundStyle(profileVM.isAthleteSaved ? Color.tapeRed : .white)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                        }
+                    }
+                }
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 16)
@@ -280,18 +377,21 @@ struct AthleteProfileView: View {
 
     private var mediaTabs: some View {
         HStack(spacing: 0) {
-            ForEach(VideoCategory.allCases) { category in
+            ForEach(tabs) { tab in
                 Button {
                     withAnimation(.spring(duration: 0.3)) {
-                        selectedTab = category
+                        selectedTab = tab
+                    }
+                    if tab == .saved {
+                        Task { await profileVM.loadSavedVideos(userID: currentUser.id) }
                     }
                 } label: {
                     VStack(spacing: 8) {
-                        Text(category.rawValue)
+                        Text(tab.title)
                             .font(.subheadline.bold())
-                            .foregroundStyle(selectedTab == category ? .white : .secondary)
+                            .foregroundStyle(selectedTab == tab ? .white : .secondary)
                         Rectangle()
-                            .fill(selectedTab == category ? Color.tapeRed : .clear)
+                            .fill(selectedTab == tab ? Color.tapeRed : .clear)
                             .frame(height: 2)
                     }
                     .frame(maxWidth: .infinity)
@@ -301,16 +401,24 @@ struct AthleteProfileView: View {
         .padding(.horizontal, 20)
     }
 
+    private var visibleVideos: [Video] {
+        switch selectedTab {
+        case .tape: profileVM.tapeVideos
+        case .culture: profileVM.cultureVideos
+        case .saved: profileVM.savedVideos
+        }
+    }
+
     @ViewBuilder
     private var mediaGrid: some View {
-        let videos = selectedTab == .tape ? profileVM.tapeVideos : profileVM.cultureVideos
+        let videos = visibleVideos
 
         if videos.isEmpty {
             VStack(spacing: 8) {
-                Image(systemName: "film")
+                Image(systemName: selectedTab == .saved ? "bookmark" : "film")
                     .font(.system(size: 32))
                     .foregroundStyle(.secondary)
-                Text(selectedTab == .tape ? "No tape yet" : "No culture clips yet")
+                Text(selectedTab.emptyMessage)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -334,7 +442,9 @@ struct AthleteProfileView: View {
                             selectedVideo = video
                         }
                         .contextMenu {
-                            if isOwnProfile {
+                            // Saved clips can belong to anyone, so pinning
+                            // only applies to the profile's own tabs.
+                            if isOwnProfile && selectedTab != .saved {
                                 Button {
                                     handlePinTap(video: video)
                                 } label: {
@@ -377,7 +487,9 @@ struct AthleteProfileView: View {
 /// week. Backend returns a list of `User` records ordered by most-recent view.
 private struct ProfileViewersSheet: View {
     let viewers: [User]
+    let currentUser: User
     @Environment(\.dismiss) private var dismiss
+    @State private var selectedViewerID: String?
 
     var body: some View {
         NavigationStack {
@@ -394,23 +506,31 @@ private struct ProfileViewersSheet: View {
                     }
                 } else {
                     List(viewers) { user in
-                        HStack(spacing: 14) {
-                            if let urlString = user.profileImageURL, let url = URL(string: urlString) {
-                                KFImage(url)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 44, height: 44)
-                                    .clipShape(Circle())
-                            } else {
-                                Image(systemName: "person.circle.fill")
-                                    .font(.system(size: 40))
-                                    .foregroundStyle(.secondary)
-                            }
-                            VStack(alignment: .leading) {
-                                Text(user.displayName)
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
-                                Text(user.subtitle)
+                        Button {
+                            selectedViewerID = user.id
+                        } label: {
+                            HStack(spacing: 14) {
+                                if let urlString = user.profileImageURL, let url = URL(string: urlString) {
+                                    KFImage(url)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 44, height: 44)
+                                        .clipShape(Circle())
+                                } else {
+                                    Image(systemName: "person.circle.fill")
+                                        .font(.system(size: 40))
+                                        .foregroundStyle(.secondary)
+                                }
+                                VStack(alignment: .leading) {
+                                    Text(user.displayName)
+                                        .font(.headline)
+                                        .foregroundStyle(.white)
+                                    Text(user.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -429,6 +549,9 @@ private struct ProfileViewersSheet: View {
                     Button("Close") { dismiss() }
                         .foregroundStyle(.white)
                 }
+            }
+            .navigationDestination(item: $selectedViewerID) { userID in
+                AthleteProfileView(athleteID: userID, currentUser: currentUser)
             }
         }
     }
