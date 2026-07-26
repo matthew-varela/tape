@@ -568,6 +568,10 @@ struct FullScreenVideoPlayer: View {
     @State private var loopObserver: NSObjectProtocol?
     @State private var isPaused = false
     @State private var isMuted = false
+    @State private var showReportDialog = false
+    @State private var showReportConfirmation = false
+
+    private let moderationService = APIModerationService()
 
     var body: some View {
         ZStack {
@@ -603,6 +607,15 @@ struct FullScreenVideoPlayer: View {
                     .accessibilityLabel(isMuted ? "Unmute" : "Mute")
 
                     Button {
+                        showReportDialog = true
+                    } label: {
+                        Image(systemName: "ellipsis.circle.fill")
+                            .font(.title)
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                    .accessibilityLabel("More options")
+
+                    Button {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -635,6 +648,27 @@ struct FullScreenVideoPlayer: View {
             if isPaused { player.play() } else { player.pause() }
             isPaused.toggle()
         }
+        .confirmationDialog(
+            "Report Video",
+            isPresented: $showReportDialog,
+            titleVisibility: .visible
+        ) {
+            ForEach(ModerationReason.forVideo(video.category), id: \.self) { reason in
+                Button(reason) { submitReport(reason: reason) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                video.category == .tape
+                    ? "Why are you reporting this Tape clip?"
+                    : "Why are you reporting this Culture / NIL clip?"
+            )
+        }
+        .alert("Thanks for reporting", isPresented: $showReportConfirmation) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Our team will review this content.")
+        }
         .onAppear {
             AudioSession.activatePlayback()
             guard let url = URL(string: video.videoURL) else { return }
@@ -657,6 +691,18 @@ struct FullScreenVideoPlayer: View {
             loopObserver = nil
             player?.pause()
             player = nil
+        }
+    }
+
+    private func submitReport(reason: String) {
+        Task {
+            try? await moderationService.report(
+                targetType: .video,
+                targetId: video.id,
+                reason: reason,
+                details: nil
+            )
+            await MainActor.run { showReportConfirmation = true }
         }
     }
 }

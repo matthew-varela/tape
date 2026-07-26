@@ -119,13 +119,13 @@ struct FeedView: View {
                 titleVisibility: .visible
             ) {
                 if let video = reportTargetVideo {
-                    ForEach(ModerationReason.all, id: \.self) { reason in
+                    ForEach(ModerationReason.forVideo(video.category), id: \.self) { reason in
                         Button(reason) { submitReport(video: video, reason: reason) }
                     }
                     Button("Cancel", role: .cancel) { reportTargetVideo = nil }
                 }
             } message: {
-                Text("Why are you reporting this video?")
+                Text(reportDialogMessage)
             }
             .confirmationDialog(
                 "Block \(blockTargetVideo?.athleteName ?? "Athlete")?",
@@ -147,6 +147,18 @@ struct FeedView: View {
             } message: {
                 Text("Our team will review this content.")
             }
+        }
+    }
+
+    private var reportDialogMessage: String {
+        guard let video = reportTargetVideo else {
+            return "Why are you reporting this video?"
+        }
+        switch video.category {
+        case .tape:
+            return "Why are you reporting this Tape clip?"
+        case .culture:
+            return "Why are you reporting this Culture / NIL clip?"
         }
     }
 

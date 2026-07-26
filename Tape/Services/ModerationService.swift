@@ -8,10 +8,13 @@ enum ReportTargetType: String, Codable {
     case message = "MESSAGE"
 }
 
-/// Canonical list of report reasons shown in the report dialogs. Centralized so
-/// the feed, profile, and chat screens stay consistent.
+/// Canonical report reasons for dialogs across feed, profile, and chat.
+///
+/// Video reports include a category-specific option first so Tape clips can be
+/// flagged as non-sports and Culture/NIL clips as off-topic for that tab.
 enum ModerationReason {
-    static let all: [String] = [
+    /// Shared safety reasons used for users and as the base for videos.
+    static let general: [String] = [
         "Inappropriate content",
         "Harassment or bullying",
         "Spam or misleading",
@@ -19,6 +22,23 @@ enum ModerationReason {
         "Violence or dangerous acts",
         "Other"
     ]
+
+    /// Alias kept for call sites that report people (profile, chat).
+    static var all: [String] { general }
+
+    /// Reasons for reporting a video, tailored to Tape vs Culture/NIL.
+    static func forVideo(_ category: VideoCategory) -> [String] {
+        [categoryMismatchReason(for: category)] + general
+    }
+
+    static func categoryMismatchReason(for category: VideoCategory) -> String {
+        switch category {
+        case .tape:
+            return "Not sports-related"
+        case .culture:
+            return "Not NIL / Culture related"
+        }
+    }
 }
 
 /// Abstraction for user-generated-content safety actions: reporting content and
