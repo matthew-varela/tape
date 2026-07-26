@@ -9,8 +9,14 @@ import com.tape.api.entity.User;
 import com.tape.api.entity.Video;
 import com.tape.api.enums.SubscriptionTier;
 import com.tape.api.enums.UserRole;
+import com.tape.api.repository.BlockRepository;
 import com.tape.api.repository.BookmarkRepository;
+import com.tape.api.repository.ConversationRepository;
+import com.tape.api.repository.FollowRepository;
+import com.tape.api.repository.MessageRepository;
 import com.tape.api.repository.ProfileViewRepository;
+import com.tape.api.repository.ReportRepository;
+import com.tape.api.repository.ScoutingBoardRepository;
 import com.tape.api.repository.SubscriptionRepository;
 import com.tape.api.repository.UserRepository;
 import com.tape.api.repository.VideoRepository;
@@ -30,17 +36,35 @@ public class UserService {
     private final BookmarkRepository bookmarkRepo;
     private final SubscriptionRepository subscriptionRepo;
     private final VideoRepository videoRepo;
+    private final ConversationRepository conversationRepo;
+    private final MessageRepository messageRepo;
+    private final ScoutingBoardRepository scoutingBoardRepo;
+    private final BlockRepository blockRepo;
+    private final ReportRepository reportRepo;
+    private final FollowRepository followRepo;
 
     public UserService(UserRepository userRepo,
                        ProfileViewRepository profileViewRepo,
                        BookmarkRepository bookmarkRepo,
                        SubscriptionRepository subscriptionRepo,
-                       VideoRepository videoRepo) {
+                       VideoRepository videoRepo,
+                       ConversationRepository conversationRepo,
+                       MessageRepository messageRepo,
+                       ScoutingBoardRepository scoutingBoardRepo,
+                       BlockRepository blockRepo,
+                       ReportRepository reportRepo,
+                       FollowRepository followRepo) {
         this.userRepo = userRepo;
         this.profileViewRepo = profileViewRepo;
         this.bookmarkRepo = bookmarkRepo;
         this.subscriptionRepo = subscriptionRepo;
         this.videoRepo = videoRepo;
+        this.conversationRepo = conversationRepo;
+        this.messageRepo = messageRepo;
+        this.scoutingBoardRepo = scoutingBoardRepo;
+        this.blockRepo = blockRepo;
+        this.reportRepo = reportRepo;
+        this.followRepo = followRepo;
     }
 
     // ── Account creation ────────────────────────────────────────────────────
@@ -49,16 +73,72 @@ public class UserService {
      * Mints a new User record keyed to the verified Firebase UID.
      * The UID is the authoritative identity; it is never derived from the request body.
      */
+    /** Minimum age (years) required to create an account (COPPA floor). */
+    private static final int MINIMUM_SIGNUP_AGE = 13;
+
     public User createUser(String uid, SignUpRequest req) {
         if (userRepo.existsById(uid)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "User already exists");
+        }
+        if (req.dateOfBirth() != null) {
+            int age = java.time.Period.between(req.dateOfBirth(), java.time.LocalDate.now()).getYears();
+            if (age < MINIMUM_SIGNUP_AGE) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "You must be at least " + MINIMUM_SIGNUP_AGE + " years old to use Tape");
+            }
         }
         User user = new User();
         user.setId(uid);
         if (req.email() != null) user.setEmail(req.email());
         user.setDisplayName(req.displayName());
         user.setRole(req.role());
+        user.setDateOfBirth(req.dateOfBirth());
         return userRepo.save(user);
+    }
+
+    // ── Account deletion ───────────────────────────────────────────────────────
+
+    /**
+     * Permanently deletes a user and all data referencing them, in FK-safe
+     * order. Required for App Store compliance (Guideline 5.1.1(v)).
+     *
+     * The deletes are bulk JPQL/native statements run inside a single
+     * transaction, so either the whole account is removed or nothing is.
+     * Removal of the underlying Firebase Auth user is handled separately by
+     * {@link FirebaseAccountService} after this transaction commits.
+     */
+    @Transactional
+    public void deleteAccount(String uid) {
+        // 404 if the account does not exist.
+        getUser(uid);
+
+        // Join / element-collection tables first (no JPQL cascade to them).
+        scoutingBoardRepo.deleteAthleteLinksForUser(uid);
+        videoRepo.deleteTagsByAthleteId(uid);
+
+        // Rows that reference the user's videos before the videos themselves.
+        bookmarkRepo.deleteByVideoAthleteId(uid);
+        bookmarkRepo.deleteByUserId(uid);
+        videoRepo.deleteByAthleteId(uid);
+
+        // Messaging: messages before their conversations.
+        messageRepo.deleteByParticipant(uid);
+        conversationRepo.deleteByParticipant(uid);
+
+        // Moderation: remove block rows involving the user and reports they
+        // filed. Reports ABOUT the user are retained for moderation history.
+        blockRepo.deleteByUser(uid);
+        reportRepo.deleteByReporterId(uid);
+
+        // Social graph edges in both directions.
+        followRepo.deleteByUser(uid);
+
+        // Remaining direct references to the user.
+        profileViewRepo.deleteByUser(uid);
+        scoutingBoardRepo.deleteByOwnerId(uid);
+        subscriptionRepo.deleteByUserId(uid);
+
+        userRepo.deleteById(uid);
     }
 
     // ── Lookup ───────────────────────────────────────────────────────────────

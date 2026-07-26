@@ -74,11 +74,55 @@ class TapeApiApplicationTests {
                 .content(mapper.writeValueAsString(Map.of(
                     "displayName", "New User",
                     "email", "new@test.com",
-                    "role", "ATHLETE"
+                    "role", "ATHLETE",
+                    "dateOfBirth", "2005-06-01"
                 ))))
             .andExpect(status().isCreated())
             .andExpect(jsonPath("$.id").value("brand-new-uid"))
-            .andExpect(jsonPath("$.role").value("ATHLETE"));
+            .andExpect(jsonPath("$.role").value("ATHLETE"))
+            .andExpect(jsonPath("$.minor").value(false));
+    }
+
+    @Test
+    void signup_flagsMinor() throws Exception {
+        String dob = java.time.LocalDate.now().minusYears(15).toString();
+        mvc.perform(post("/api/auth/signup")
+                .header("X-Test-User-ID", "teen-uid")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of(
+                    "displayName", "Teen Athlete",
+                    "role", "ATHLETE",
+                    "dateOfBirth", dob
+                ))))
+            .andExpect(status().isCreated())
+            .andExpect(jsonPath("$.minor").value(true));
+    }
+
+    @Test
+    void signup_under13_returns400() throws Exception {
+        String dob = java.time.LocalDate.now().minusYears(10).toString();
+        mvc.perform(post("/api/auth/signup")
+                .header("X-Test-User-ID", "too-young-uid")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of(
+                    "displayName", "Too Young",
+                    "role", "ATHLETE",
+                    "dateOfBirth", dob
+                ))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void signup_missingDateOfBirth_returns400() throws Exception {
+        mvc.perform(post("/api/auth/signup")
+                .header("X-Test-User-ID", "no-dob-uid")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of(
+                    "displayName", "No DOB",
+                    "role", "ATHLETE"
+                ))))
+            .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -86,7 +130,11 @@ class TapeApiApplicationTests {
         mvc.perform(post("/api/auth/signup")
                 .header("X-Test-User-ID", UID_ATHLETE)
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(mapper.writeValueAsString(Map.of("displayName", "Dup", "role", "ATHLETE"))))
+                .content(mapper.writeValueAsString(Map.of(
+                    "displayName", "Dup",
+                    "role", "ATHLETE",
+                    "dateOfBirth", "2005-06-01"
+                ))))
             .andExpect(status().isConflict())
             .andExpect(jsonPath("$.message").exists());
     }
@@ -282,6 +330,148 @@ class TapeApiApplicationTests {
                 .content(mapper.writeValueAsString(Map.of("text", "Should be blocked"))))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.message").exists());
+    }
+
+    // ── Moderation: report + block ────────────────────────────────────────────
+
+    @Test
+    void report_created() throws Exception {
+        mvc.perform(post("/api/reports")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of(
+                    "targetType", "USER",
+                    "targetId", UID_ATHLETE,
+                    "reason", "Inappropriate content"
+                ))))
+            .andExpect(status().isCreated());
+    }
+
+    @Test
+    void block_excludesBlockedUserFromFeed() throws Exception {
+        // Athlete publishes a video.
+        mvc.perform(post("/api/videos")
+                .header("X-Test-User-ID", UID_ATHLETE)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of(
+                    "videoUrl", "https://example.com/v.mp4",
+                    "category", "TAPE"
+                ))))
+            .andExpect(status().isCreated());
+
+        // Before blocking, the recruiter sees the athlete's video in the feed.
+        mvc.perform(get("/api/videos/feed").header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.athleteId == '" + UID_ATHLETE + "')]", hasSize(1)));
+
+        // Recruiter blocks the athlete.
+        mvc.perform(post("/api/blocks")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("userId", UID_ATHLETE))))
+            .andExpect(status().isNoContent());
+
+        // Now the athlete's video is gone from the recruiter's feed.
+        mvc.perform(get("/api/videos/feed").header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.athleteId == '" + UID_ATHLETE + "')]", hasSize(0)));
+
+        // The block appears in the recruiter's block list.
+        mvc.perform(get("/api/blocks").header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$", hasItem(UID_ATHLETE)));
+
+        // After unblocking, the video returns.
+        mvc.perform(delete("/api/blocks/" + UID_ATHLETE).header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isNoContent());
+        mvc.perform(get("/api/videos/feed").header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[?(@.athleteId == '" + UID_ATHLETE + "')]", hasSize(1)));
+    }
+
+    @Test
+    void block_preventsStartingConversation() throws Exception {
+        mvc.perform(post("/api/blocks")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("userId", UID_ATHLETE))))
+            .andExpect(status().isNoContent());
+
+        mvc.perform(post("/api/conversations")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("recipientId", UID_ATHLETE))))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void block_self_isBadRequest() throws Exception {
+        mvc.perform(post("/api/blocks")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("userId", UID_RECRUITER))))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.message").exists());
+    }
+
+    // ── Account deletion ──────────────────────────────────────────────────────
+
+    @Test
+    void deleteAccount_removesUserAndReturns404Afterward() throws Exception {
+        // The athlete is referenced as an athlete on a recruiter's scouting board.
+        String boardJson = mvc.perform(post("/api/scouting-boards")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("name", "Watchlist"))))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        String boardId = mapper.readTree(boardJson).get("id").asText();
+
+        mvc.perform(post("/api/scouting-boards/" + boardId + "/athletes")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("athleteId", UID_ATHLETE))))
+            .andExpect(status().isOk());
+
+        // Athlete deletes their own account.
+        mvc.perform(delete("/api/users/me")
+                .header("X-Test-User-ID", UID_ATHLETE))
+            .andExpect(status().isNoContent());
+
+        // The athlete record is gone.
+        mvc.perform(get("/api/users/" + UID_ATHLETE)
+                .header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isNotFound());
+
+        // The recruiter's board still exists (athlete link was removed cleanly).
+        mvc.perform(patch("/api/scouting-boards/" + boardId)
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("name", "Watchlist 2"))))
+            .andExpect(status().isOk());
+    }
+
+    @Test
+    void deleteAccount_ownerRemovesTheirBoards() throws Exception {
+        String boardJson = mvc.perform(post("/api/scouting-boards")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("name", "Owned Board"))))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        String boardId = mapper.readTree(boardJson).get("id").asText();
+
+        mvc.perform(delete("/api/users/me")
+                .header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isNoContent());
+
+        // The owner's board is gone along with the account.
+        mvc.perform(patch("/api/scouting-boards/" + boardId)
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("name", "Ghost"))))
+            .andExpect(status().isNotFound());
     }
 
     // ── Scouting boards ───────────────────────────────────────────────────────

@@ -14,6 +14,18 @@ final class APIVideoService: VideoServiceProtocol {
         ])
     }
 
+    func fetchFollowingFeedVideos(page: Int) async throws -> [Video] {
+        try await client.get("/api/videos/feed/following", query: [
+            "page": String(page),
+            "size": "10"
+        ])
+    }
+
+    func recordView(videoID: String) async throws {
+        struct Empty: Encodable {}
+        try await client.postVoid("/api/videos/\(videoID)/view", body: Empty())
+    }
+
     func fetchVideos(for athleteID: String) async throws -> [Video] {
         try await client.get("/api/videos", query: ["athleteId": athleteID])
     }

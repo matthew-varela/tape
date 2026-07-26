@@ -2,8 +2,8 @@ import PhotosUI
 import SwiftUI
 
 /// First step of the upload flow. The user picks a clip from their library
-/// (PhotosPicker) and we hand off to either the trimmer (if > 15s) or the
-/// tag selection screen.
+/// (PhotosPicker) and we hand off to either the trimmer (if the clip is over
+/// the one-minute limit) or the tag selection screen.
 ///
 /// Production wiring uses the real `APIVideoService` for the metadata POST
 /// and `FirebaseStorageService` for the actual byte transfer.
@@ -17,6 +17,7 @@ struct UploadView: View {
     @State private var showTrimmer = false
     @State private var showTagSelection = false
     @State private var showSuccessAlert = false
+    @State private var isImporting = false
 
     var body: some View {
         NavigationStack {
@@ -73,11 +74,19 @@ struct UploadView: View {
             .onChange(of: selectedItem) { _, newValue in
                 guard let item = newValue else { return }
                 Task {
-                    if let data = try? await item.loadTransferable(type: VideoTransferable.self) {
+                    isImporting = true
+                    defer { isImporting = false }
+                    do {
+                        guard let data = try await item.loadTransferable(type: VideoTransferable.self) else {
+                            uploadVM.errorMessage = "That clip couldn't be read. Try picking it again."
+                            return
+                        }
                         await uploadVM.processSelectedVideo(url: data.url)
                         if !uploadVM.needsTrimming {
                             showTagSelection = true
                         }
+                    } catch {
+                        uploadVM.errorMessage = "That clip couldn't be imported. \(error.localizedDescription)"
                     }
                 }
             }
@@ -88,6 +97,17 @@ struct UploadView: View {
                 }
             } message: {
                 Text("Your clip is now live on the feed.")
+            }
+            .alert(
+                "Upload Problem",
+                isPresented: Binding(
+                    get: { uploadVM.errorMessage != nil },
+                    set: { if !$0 { uploadVM.errorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { uploadVM.errorMessage = nil }
+            } message: {
+                Text(uploadVM.errorMessage ?? "")
             }
         }
     }
@@ -104,10 +124,19 @@ struct UploadView: View {
                 .font(.title2.bold())
                 .foregroundStyle(.white)
 
-            Text("Upload a 5-15 second clip.\nLonger videos will be trimmed.")
+            Text("Clips can be up to 1 minute.\nLonger videos get trimmed before posting.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            if isImporting {
+                HStack(spacing: 8) {
+                    ProgressView().tint(.white)
+                    Text("Preparing clip…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
 
             PhotosPicker(
                 selection: $selectedItem,

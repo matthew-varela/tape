@@ -26,7 +26,18 @@ public class VideoController {
     public List<VideoFeedResponse> getFeed(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size) {
-        Page<Video> videos = videoService.getFeed(page, size);
+        String uid = SecurityUtils.requireFirebaseUid();
+        Page<Video> videos = videoService.getFeed(page, size, uid);
+        return videos.getContent().stream().map(videoService::toFeedResponse).toList();
+    }
+
+    /** Feed restricted to athletes the caller follows. */
+    @GetMapping("/feed/following")
+    public List<VideoFeedResponse> getFollowingFeed(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        String uid = SecurityUtils.requireFirebaseUid();
+        Page<Video> videos = videoService.getFollowingFeed(page, size, uid);
         return videos.getContent().stream().map(videoService::toFeedResponse).toList();
     }
 
@@ -47,7 +58,8 @@ public class VideoController {
             @RequestParam(required = false) String sport,
             @RequestParam(required = false) Integer gradYear,
             @RequestParam(required = false) Double minGpa) {
-        return videoService.getFilteredVideos(position, state, sport, gradYear, minGpa)
+        String uid = SecurityUtils.requireFirebaseUid();
+        return videoService.getFilteredVideos(position, state, sport, gradYear, minGpa, uid)
             .stream().map(videoService::toFeedResponse).toList();
     }
 
@@ -61,6 +73,14 @@ public class VideoController {
         String uid = SecurityUtils.requireFirebaseUid();
         Video video = videoService.publishVideo(request, uid);
         return videoService.toFeedResponse(video);
+    }
+
+    /** Records one play. Self-views are ignored server-side. */
+    @PostMapping("/{id}/view")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void recordView(@PathVariable String id) {
+        String uid = SecurityUtils.requireFirebaseUid();
+        videoService.recordView(id, uid);
     }
 
     /** Pro feature. Caller must own the video. */

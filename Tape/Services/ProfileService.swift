@@ -41,6 +41,11 @@ protocol ProfileServiceProtocol {
     /// Persists edits to the user's profile. The server is the source of truth
     /// — call `fetchCurrentUser()` afterward if you need the canonical record.
     func updateProfile(_ user: User) async throws
+
+    /// Permanently deletes the authenticated user's account and all associated
+    /// data on the server (and their Firebase Auth user). Required for App Store
+    /// compliance. Caller is responsible for signing out afterward.
+    func deleteAccount() async throws
 }
 
 // MARK: - MockProfileService
@@ -108,5 +113,9 @@ final class MockProfileService: ProfileServiceProtocol {
         if let index = allUsers.firstIndex(where: { $0.id == user.id }) {
             allUsers[index] = user
         }
+    }
+
+    func deleteAccount() async throws {
+        try await Task.sleep(for: .milliseconds(300))
     }
 }

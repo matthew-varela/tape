@@ -89,7 +89,10 @@ struct LoginView: View {
                     .font(.subheadline)
                     .foregroundStyle(Color.tapeRed)
 
-                    // Demo quick-login
+                    // Demo quick-login — DEBUG only. Never ships in a Release
+                    // build so App Store reviewers / users never see hardcoded
+                    // demo credentials.
+                    #if DEBUG
                     VStack(spacing: 8) {
                         Text("Quick Demo Login")
                             .font(.caption)
@@ -114,6 +117,7 @@ struct LoginView: View {
                             }
                         }
                     }
+                    #endif
 
                     Spacer()
                 }

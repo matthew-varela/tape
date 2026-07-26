@@ -68,6 +68,7 @@ struct Video: Codable, Identifiable, Hashable {
     let caption: String
     let createdAt: Date
     var isPinned: Bool
+    var viewCount: Int
 
     let athleteName: String
     let athleteSchool: String
@@ -80,7 +81,7 @@ struct Video: Codable, Identifiable, Hashable {
         case athleteID = "athleteId"
         case videoURL = "videoUrl"
         case thumbnailURL = "thumbnailUrl"
-        case category, tags, caption, createdAt, isPinned
+        case category, tags, caption, createdAt, isPinned, viewCount
         case athleteName, athleteSchool, athleteGradYear, athletePosition
         case athleteProfileImageURL = "athleteProfileImageUrl"
     }
@@ -95,6 +96,7 @@ struct Video: Codable, Identifiable, Hashable {
         caption: String = "",
         createdAt: Date = .now,
         isPinned: Bool = false,
+        viewCount: Int = 0,
         athleteName: String,
         athleteSchool: String,
         athleteGradYear: Int,
@@ -110,6 +112,7 @@ struct Video: Codable, Identifiable, Hashable {
         self.caption = caption
         self.createdAt = createdAt
         self.isPinned = isPinned
+        self.viewCount = viewCount
         self.athleteName = athleteName
         self.athleteSchool = athleteSchool
         self.athleteGradYear = athleteGradYear
@@ -128,10 +131,30 @@ struct Video: Codable, Identifiable, Hashable {
         caption = try c.decodeIfPresent(String.self, forKey: .caption) ?? ""
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now
         isPinned = try c.decodeIfPresent(Bool.self, forKey: .isPinned) ?? false
+        viewCount = try c.decodeIfPresent(Int.self, forKey: .viewCount) ?? 0
         athleteName = try c.decodeIfPresent(String.self, forKey: .athleteName) ?? ""
         athleteSchool = try c.decodeIfPresent(String.self, forKey: .athleteSchool) ?? ""
         athleteGradYear = try c.decodeIfPresent(Int.self, forKey: .athleteGradYear) ?? 2026
         athletePosition = try c.decodeIfPresent(String.self, forKey: .athletePosition) ?? ""
         athleteProfileImageURL = try c.decodeIfPresent(String.self, forKey: .athleteProfileImageURL)
+    }
+
+    /// Compact play count in the style feeds use: `847`, `1.2K`, `3.4M`.
+    var viewCountLabel: String {
+        switch viewCount {
+        case ..<1_000:
+            return "\(viewCount)"
+        case ..<1_000_000:
+            return trimmedDecimal(Double(viewCount) / 1_000) + "K"
+        default:
+            return trimmedDecimal(Double(viewCount) / 1_000_000) + "M"
+        }
+    }
+
+    private func trimmedDecimal(_ value: Double) -> String {
+        // 1.0K reads worse than 1K, so drop a zero-only fraction.
+        value < 10 && value.truncatingRemainder(dividingBy: 1) >= 0.05
+            ? String(format: "%.1f", value)
+            : String(Int(value))
     }
 }

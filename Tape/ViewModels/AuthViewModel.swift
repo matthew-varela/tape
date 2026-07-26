@@ -28,6 +28,11 @@ final class AuthViewModel {
     /// good defensive habit).
     private var observationTask: Task<Void, Never>?
 
+    /// True while `signUp` / `signIn` / demo login are in flight. Suppresses
+    /// the Firebase auth observer from racing ahead with `/me` hydration before
+    /// the backend signup/signin call finishes.
+    private var isPerformingCredentialAuth = false
+
     init(
         authService: AuthServiceProtocol = MockAuthService(),
         profileService: ProfileServiceProtocol = MockProfileService()
@@ -49,6 +54,10 @@ final class AuthViewModel {
             for await event in self.authService.observeAuthState() {
                 switch event {
                 case .signedIn:
+                    // During sign-up/sign-in we set authState from the backend
+                    // response directly; hydrating here would race /me ahead of
+                    // POST /api/auth/signup or /signin.
+                    guard !self.isPerformingCredentialAuth else { continue }
                     await self.hydrateCurrentUser()
                 case .signedOut:
                     await MainActor.run { self.authState = .unauthenticated }
@@ -68,6 +77,9 @@ final class AuthViewModel {
             authState = .authenticated(user)
         } catch {
             #if DEBUG
+            if case APIError.badResponse(let code, let body) = error, code == 401 {
+                print("AuthViewModel: failed to hydrate /me — 401. If the backend returns {\"message\":\"Not authenticated\"} (not \"Missing or invalid Authorization header\"), Firebase auth is likely disabled on the server — set TAPE_FIREBASE_ENABLED=true on Render.")
+            }
             print("AuthViewModel: failed to hydrate /me — \(error.localizedDescription)")
             #endif
             authState = .unauthenticated
@@ -100,29 +112,42 @@ final class AuthViewModel {
 
     // MARK: - Sign up / Sign in / Sign out
 
-    func signUp(email: String, password: String, displayName: String, role: UserRole) async {
+    func signUp(email: String, password: String, displayName: String, role: UserRole, dateOfBirth: Date) async {
         isLoading = true
         errorMessage = nil
+        isPerformingCredentialAuth = true
+        defer {
+            isPerformingCredentialAuth = false
+            isLoading = false
+        }
         do {
-            // We don't read the result here — the auth state listener will
-            // fire once Firebase persists the session, which triggers
-            // hydrateCurrentUser() and updates `authState` for us.
-            _ = try await authService.signUp(email: email, password: password, displayName: displayName, role: role)
+            let user = try await authService.signUp(
+                email: email,
+                password: password,
+                displayName: displayName,
+                role: role,
+                dateOfBirth: dateOfBirth
+            )
+            authState = .authenticated(user)
         } catch {
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 
     func signIn(email: String, password: String) async {
         isLoading = true
         errorMessage = nil
+        isPerformingCredentialAuth = true
+        defer {
+            isPerformingCredentialAuth = false
+            isLoading = false
+        }
         do {
-            _ = try await authService.signIn(email: email, password: password)
+            let user = try await authService.signIn(email: email, password: password)
+            authState = .authenticated(user)
         } catch {
             errorMessage = error.localizedDescription
         }
-        isLoading = false
     }
 
     func clearError() {
@@ -134,11 +159,42 @@ final class AuthViewModel {
         // The Firebase listener will fire .signedOut and we'll transition.
     }
 
+    /// Permanently deletes the signed-in user's account: removes all server data
+    /// and the Firebase Auth user (server-side), then signs out locally. Returns
+    /// `true` on success. On failure, sets `errorMessage` and returns `false` so
+    /// the UI can keep the user on the settings screen.
+    @MainActor
+    @discardableResult
+    func deleteAccount() async -> Bool {
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+        do {
+            try await profileService.deleteAccount()
+            // Server already removed the Firebase Auth user; clear the local
+            // session so the auth listener transitions us to .unauthenticated.
+            try? authService.signOut()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    #if DEBUG
     /// Convenience for the demo quick-login buttons on the login screen.
     /// Tries to sign in; if the user doesn't exist yet, creates them.
+    ///
+    /// DEBUG-only: this and the hardcoded demo credentials are compiled out of
+    /// Release builds so they never reach the App Store binary.
     func signInAsDemo(role: UserRole) async {
         isLoading = true
         errorMessage = nil
+        isPerformingCredentialAuth = true
+        defer {
+            isPerformingCredentialAuth = false
+            isLoading = false
+        }
 
         let demoEmail: String
         let demoName: String
@@ -155,20 +211,26 @@ final class AuthViewModel {
             demoName = "Demo Brand"
         }
 
+        // Demo accounts use a fixed adult date of birth.
+        let demoDOB = Calendar.current.date(from: DateComponents(year: 2000, month: 1, day: 1)) ?? Date(timeIntervalSince1970: 946_684_800)
+
         do {
-            _ = try await authService.signIn(email: demoEmail, password: demoPassword)
+            let user = try await authService.signIn(email: demoEmail, password: demoPassword)
+            authState = .authenticated(user)
         } catch {
             do {
-                _ = try await authService.signUp(
+                let user = try await authService.signUp(
                     email: demoEmail,
                     password: demoPassword,
                     displayName: demoName,
-                    role: role
+                    role: role,
+                    dateOfBirth: demoDOB
                 )
+                authState = .authenticated(user)
             } catch {
                 errorMessage = error.localizedDescription
             }
         }
-        isLoading = false
     }
+    #endif
 }

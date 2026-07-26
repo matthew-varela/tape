@@ -35,7 +35,7 @@ enum AuthEvent {
 /// user, and — importantly — observing the live Firebase auth state across
 /// app launches. The observer is what allows session restore.
 protocol AuthServiceProtocol {
-    func signUp(email: String, password: String, displayName: String, role: UserRole) async throws -> User
+    func signUp(email: String, password: String, displayName: String, role: UserRole, dateOfBirth: Date) async throws -> User
     func signIn(email: String, password: String) async throws -> User
     func signOut() throws
     func currentUser() -> User?
@@ -54,7 +54,7 @@ protocol AuthServiceProtocol {
 final class MockAuthService: AuthServiceProtocol {
     private var loggedInUser: User?
 
-    func signUp(email: String, password: String, displayName: String, role: UserRole) async throws -> User {
+    func signUp(email: String, password: String, displayName: String, role: UserRole, dateOfBirth: Date) async throws -> User {
         try await Task.sleep(for: .milliseconds(500))
         let user = User(email: email, displayName: displayName, role: role)
         loggedInUser = user

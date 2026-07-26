@@ -8,7 +8,12 @@ options:
 settings:
   base:
     SWIFT_VERSION: "5.9"
-    DEVELOPMENT_TEAM: ""
+    # Once enrolled in the Apple Developer Program, generate the project with
+    # your Team ID, e.g. `DEVELOPMENT_TEAM=ABCDE12345 xcodegen generate`.
+    # Left empty it builds fine for the simulator; a team is required to
+    # archive for TestFlight / the App Store.
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
 packages:
   Kingfisher:
     url: https://github.com/onevcat/Kingfisher.git
@@ -43,3 +48,5 @@ targets:
         product: FirebaseAuth
       - package: Firebase
         product: FirebaseFirestore
+      - package: Firebase
+        product: FirebaseStorage

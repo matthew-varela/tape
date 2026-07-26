@@ -17,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Service
 public class MessageService {
@@ -27,17 +28,23 @@ public class MessageService {
     private final ConversationRepository conversationRepo;
     private final MessageRepository messageRepo;
     private final UserService userService;
+    private final ModerationService moderationService;
 
     public MessageService(ConversationRepository conversationRepo,
                           MessageRepository messageRepo,
-                          UserService userService) {
+                          UserService userService,
+                          ModerationService moderationService) {
         this.conversationRepo = conversationRepo;
         this.messageRepo = messageRepo;
         this.userService = userService;
+        this.moderationService = moderationService;
     }
 
     public List<Conversation> getConversations(String callerUid) {
-        return conversationRepo.findByParticipant(callerUid);
+        Set<String> hidden = moderationService.getHiddenUserIds(callerUid);
+        return conversationRepo.findByParticipant(callerUid).stream()
+            .filter(c -> !hidden.contains(c.otherParticipant(callerUid).getId()))
+            .toList();
     }
 
     /**
@@ -46,6 +53,10 @@ public class MessageService {
      */
     @Transactional
     public Conversation startConversation(StartConversationRequest req, String callerUid) {
+        if (moderationService.isEitherBlocked(callerUid, req.recipientId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "You cannot start a conversation with this user");
+        }
         return conversationRepo.findByParticipants(callerUid, req.recipientId())
             .orElseGet(() -> {
                 User initiator = userService.getUser(callerUid);
@@ -83,6 +94,12 @@ public class MessageService {
     public Message sendMessage(String conversationId, SendMessageRequest req, String callerUid) {
         Conversation conv = getConversation(conversationId);
         requireParticipant(conv, callerUid);
+
+        String otherId = conv.otherParticipant(callerUid).getId();
+        if (moderationService.isEitherBlocked(callerUid, otherId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                "You cannot message this user");
+        }
 
         User sender = userService.getUser(callerUid);
 

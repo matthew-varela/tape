@@ -14,7 +14,8 @@ struct AthleteProfileView: View {
     let currentUser: User
     @State private var profileVM = ProfileViewModel(
         profileService: APIProfileService(),
-        videoService: APIVideoService()
+        videoService: APIVideoService(),
+        followService: APIFollowService()
     )
     @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var selectedTab: VideoCategory = .tape
@@ -22,6 +23,13 @@ struct AthleteProfileView: View {
     @State private var navigateToChat: Conversation?
     @State private var showPaywall = false
     @State private var showViewersSheet = false
+
+    // Moderation
+    private let moderationService = APIModerationService()
+    @Environment(\.dismiss) private var dismiss
+    @State private var showReportDialog = false
+    @State private var showBlockDialog = false
+    @State private var showReportConfirmation = false
 
     private var isOwnProfile: Bool { currentUser.id == athleteID }
 
@@ -36,6 +44,7 @@ struct AthleteProfileView: View {
                     ScrollView {
                         VStack(spacing: 0) {
                             profileHeader(athlete)
+                            followRow(athlete)
                             VitalsDashboard(athlete: athlete)
                             messageButton(athlete)
                             mediaTabs
@@ -49,6 +58,7 @@ struct AthleteProfileView: View {
             }
             .task {
                 await profileVM.loadProfile(athleteID: athleteID)
+                await profileVM.loadFollowCounts(athleteID: athleteID)
                 if isOwnProfile {
                     // Profile viewers list is only relevant for the owner.
                     // Backend should 403 if anyone else asks; we still load
@@ -68,6 +78,20 @@ struct AthleteProfileView: View {
                                 .foregroundStyle(.white)
                         }
                     }
+                } else {
+                    ToolbarItem(placement: .primaryAction) {
+                        Menu {
+                            Button(role: .destructive) { showReportDialog = true } label: {
+                                Label("Report User", systemImage: "flag")
+                            }
+                            Button(role: .destructive) { showBlockDialog = true } label: {
+                                Label("Block User", systemImage: "hand.raised")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .foregroundStyle(.white)
+                        }
+                    }
                 }
             }
             .fullScreenCover(item: $selectedVideo) { video in
@@ -83,6 +107,47 @@ struct AthleteProfileView: View {
                 ProfileViewersSheet(viewers: profileVM.profileViewers)
                     .presentationDetents([.medium, .large])
             }
+            .confirmationDialog("Report User", isPresented: $showReportDialog, titleVisibility: .visible) {
+                ForEach(ModerationReason.all, id: \.self) { reason in
+                    Button(reason) { submitReport(reason: reason) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Why are you reporting this user?")
+            }
+            .confirmationDialog("Block \(profileVM.athlete?.displayName ?? "User")?",
+                                isPresented: $showBlockDialog, titleVisibility: .visible) {
+                Button("Block", role: .destructive) { submitBlock() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("You won't see their content and they won't be able to message you.")
+            }
+            .alert("Thanks for reporting", isPresented: $showReportConfirmation) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Our team will review this user.")
+            }
+        }
+    }
+
+    // MARK: - Moderation actions
+
+    private func submitReport(reason: String) {
+        Task {
+            try? await moderationService.report(
+                targetType: .user,
+                targetId: athleteID,
+                reason: reason,
+                details: nil
+            )
+            await MainActor.run { showReportConfirmation = true }
+        }
+    }
+
+    private func submitBlock() {
+        Task {
+            try? await moderationService.blockUser(athleteID)
+            await MainActor.run { dismiss() }
         }
     }
 
@@ -131,6 +196,59 @@ struct AthleteProfileView: View {
             }
         }
         .padding(.vertical, 20)
+    }
+
+    // MARK: - Follow
+
+    /// Follower/following counters plus the follow button. Counters are always
+    /// visible; the button only appears on other people's profiles.
+    private func followRow(_ athlete: User) -> some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 32) {
+                countPill(value: profileVM.followCounts.followers, label: "Followers")
+                countPill(value: profileVM.followCounts.following, label: "Following")
+            }
+
+            if !isOwnProfile {
+                Button {
+                    Task { await profileVM.toggleFollow(athleteID: athleteID) }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Label(
+                        profileVM.followCounts.isFollowing ? "Following" : "Follow",
+                        systemImage: profileVM.followCounts.isFollowing ? "checkmark" : "plus"
+                    )
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(profileVM.followCounts.isFollowing ? Color.tapeCardBg : Color.tapeRed)
+                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                profileVM.followCounts.isFollowing ? Color.white.opacity(0.2) : .clear,
+                                lineWidth: 1
+                            )
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .padding(.bottom, 20)
+    }
+
+    private func countPill(value: Int, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)")
+                .font(.headline.bold())
+                .monospacedDigit()
+                .foregroundStyle(.white)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -183,42 +301,56 @@ struct AthleteProfileView: View {
         .padding(.horizontal, 20)
     }
 
+    @ViewBuilder
     private var mediaGrid: some View {
         let videos = selectedTab == .tape ? profileVM.tapeVideos : profileVM.cultureVideos
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 2) {
-            ForEach(videos) { video in
-                AsyncVideoThumbnail(videoURL: video.videoURL)
-                    .aspectRatio(9/16, contentMode: .fill)
-                    .clipped()
-                    .overlay(alignment: .topLeading) {
-                        if video.isPinned {
-                            Image(systemName: "pin.fill")
-                                .font(.caption)
-                                .padding(4)
-                                .background(.ultraThinMaterial)
-                                .clipShape(Circle())
-                                .padding(4)
+
+        if videos.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "film")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.secondary)
+                Text(selectedTab == .tape ? "No tape yet" : "No culture clips yet")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 48)
+        } else {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 2), count: 3), spacing: 2) {
+                ForEach(videos) { video in
+                    VideoThumbnailTile(video: video)
+                        .overlay(alignment: .topLeading) {
+                            if video.isPinned {
+                                Image(systemName: "pin.fill")
+                                    .font(.caption)
+                                    .padding(4)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(Circle())
+                                    .padding(4)
+                            }
                         }
-                    }
-                    .onTapGesture {
-                        selectedVideo = video
-                    }
-                    .contextMenu {
-                        if isOwnProfile {
-                            Button {
-                                handlePinTap(video: video)
-                            } label: {
-                                if video.isPinned {
-                                    Label("Unpin", systemImage: "pin.slash.fill")
-                                } else {
-                                    Label("Pin to Top", systemImage: "pin.fill")
+                        .onTapGesture {
+                            selectedVideo = video
+                        }
+                        .contextMenu {
+                            if isOwnProfile {
+                                Button {
+                                    handlePinTap(video: video)
+                                } label: {
+                                    if video.isPinned {
+                                        Label("Unpin", systemImage: "pin.slash.fill")
+                                    } else {
+                                        Label("Pin to Top", systemImage: "pin.fill")
+                                    }
                                 }
                             }
                         }
-                    }
+                        .accessibilityLabel("Clip by \(video.athleteName), \(video.viewCount) views")
+                }
             }
+            .padding(.top, 8)
         }
-        .padding(.top, 8)
     }
 
     // MARK: - Pin handling
@@ -304,10 +436,15 @@ private struct ProfileViewersSheet: View {
 
 // MARK: - FullScreenVideoPlayer
 
+/// Full-screen looping player opened from a profile grid tile. Mirrors the
+/// feed's gestures: tap anywhere to pause/resume, speaker button to mute.
 struct FullScreenVideoPlayer: View {
     let video: Video
     @Environment(\.dismiss) private var dismiss
     @State private var player: AVPlayer?
+    @State private var loopObserver: NSObjectProtocol?
+    @State private var isPaused = false
+    @State private var isMuted = false
 
     var body: some View {
         ZStack {
@@ -318,9 +455,30 @@ struct FullScreenVideoPlayer: View {
                     .ignoresSafeArea()
             }
 
+            if isPaused {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .shadow(radius: 8)
+                    .allowsHitTesting(false)
+            }
+
             VStack {
-                HStack {
+                HStack(spacing: 16) {
                     Spacer()
+
+                    Button {
+                        isMuted.toggle()
+                        player?.isMuted = isMuted
+                    } label: {
+                        Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.title3)
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel(isMuted ? "Unmute" : "Mute")
+
                     Button {
                         dismiss()
                     } label: {
@@ -328,27 +486,52 @@ struct FullScreenVideoPlayer: View {
                             .font(.title)
                             .foregroundStyle(.white.opacity(0.8))
                     }
-                    .padding()
+                    .accessibilityLabel("Close")
                 }
+                .padding()
+
                 Spacer()
+
+                HStack(spacing: 4) {
+                    Image(systemName: "play.fill")
+                        .font(.caption2)
+                    Text("\(video.viewCountLabel) views")
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                }
+                .foregroundStyle(.white.opacity(0.9))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .padding(.bottom, 32)
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard let player else { return }
+            if isPaused { player.play() } else { player.pause() }
+            isPaused.toggle()
+        }
         .onAppear {
-            if let url = URL(string: video.videoURL) {
-                let p = AVPlayer(url: url)
-                player = p
+            AudioSession.activatePlayback()
+            guard let url = URL(string: video.videoURL) else { return }
+            let p = AVPlayer(url: url)
+            player = p
+            p.play()
+            loopObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: p.currentItem,
+                queue: .main
+            ) { _ in
+                p.seek(to: .zero)
                 p.play()
-                NotificationCenter.default.addObserver(
-                    forName: .AVPlayerItemDidPlayToEndTime,
-                    object: p.currentItem,
-                    queue: .main
-                ) { _ in
-                    p.seek(to: .zero)
-                    p.play()
-                }
             }
         }
         .onDisappear {
+            if let loopObserver {
+                NotificationCenter.default.removeObserver(loopObserver)
+            }
+            loopObserver = nil
             player?.pause()
             player = nil
         }

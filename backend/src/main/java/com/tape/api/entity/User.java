@@ -1,10 +1,13 @@
 package com.tape.api.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.tape.api.enums.SubscriptionTier;
 import com.tape.api.enums.UserRole;
 import jakarta.persistence.*;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.Period;
 import java.util.UUID;
 
 /**
@@ -33,6 +36,9 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 8)
     private SubscriptionTier tier = SubscriptionTier.FREE;
+
+    /** Used for age gating and minor-safety handling. Nullable for pre-existing accounts. */
+    private LocalDate dateOfBirth;
 
     private String profileImageUrl;
 
@@ -80,6 +86,21 @@ public class User {
 
     public SubscriptionTier getTier() { return tier; }
     public void setTier(SubscriptionTier tier) { this.tier = tier; }
+
+    public LocalDate getDateOfBirth() { return dateOfBirth; }
+    public void setDateOfBirth(LocalDate dateOfBirth) { this.dateOfBirth = dateOfBirth; }
+
+    /**
+     * Serialized to clients as {@code "minor": true|false}. A user with an
+     * unknown date of birth is treated as not-a-minor (false) so legacy
+     * accounts don't get incorrectly flagged; new signups always provide it.
+     */
+    @Transient
+    @JsonProperty("minor")
+    public boolean isMinor() {
+        if (dateOfBirth == null) return false;
+        return Period.between(dateOfBirth, LocalDate.now()).getYears() < 18;
+    }
 
     public String getProfileImageUrl() { return profileImageUrl; }
     public void setProfileImageUrl(String profileImageUrl) { this.profileImageUrl = profileImageUrl; }

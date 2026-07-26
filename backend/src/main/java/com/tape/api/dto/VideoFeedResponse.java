@@ -14,6 +14,7 @@ public record VideoFeedResponse(
     String caption,
     Instant createdAt,
     boolean isPinned,
+    long viewCount,
     String athleteName,
     String athleteSchool,
     int athleteGradYear,

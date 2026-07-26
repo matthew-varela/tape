@@ -5,6 +5,7 @@ import com.tape.api.dto.SubscriptionSyncRequest;
 import com.tape.api.entity.User;
 import com.tape.api.enums.UserRole;
 import com.tape.api.security.SecurityUtils;
+import com.tape.api.service.FirebaseAccountService;
 import com.tape.api.service.UserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -24,9 +25,11 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
+    private final FirebaseAccountService firebaseAccountService;
 
-    public UserController(UserService userService) {
+    public UserController(UserService userService, FirebaseAccountService firebaseAccountService) {
         this.userService = userService;
+        this.firebaseAccountService = firebaseAccountService;
     }
 
     // ── Session hydration ─────────────────────────────────────────────────────
@@ -34,6 +37,19 @@ public class UserController {
     @GetMapping("/me")
     public User getCurrentUser() {
         return userService.getUser(SecurityUtils.requireFirebaseUid());
+    }
+
+    /**
+     * DELETE /api/users/me — permanently deletes the caller's account and all
+     * associated data, plus their Firebase Auth user. Required for App Store
+     * compliance (Guideline 5.1.1(v)).
+     */
+    @DeleteMapping("/me")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteCurrentUser() {
+        String uid = SecurityUtils.requireFirebaseUid();
+        userService.deleteAccount(uid);
+        firebaseAccountService.deleteUser(uid);
     }
 
     // ── Profile lookup ────────────────────────────────────────────────────────

@@ -50,13 +50,18 @@ Request:
 ```json
 {
   "displayName": "string",
-  "role": "ATHLETE | RECRUITER | BRAND"
+  "role": "ATHLETE | RECRUITER | BRAND",
+  "dateOfBirth": "yyyy-MM-dd"
 }
 ```
+
+`dateOfBirth` is required (age gating). The response `User` includes a derived
+`minor` boolean (true when under 18).
 
 Response: `User`
 
 Errors:
+- `400` — `dateOfBirth` missing/invalid, or the user is under 13.
 - `409` — a user with that Firebase UID already exists.
 
 ### `POST /api/auth/signin`
@@ -85,6 +90,13 @@ Returns the canonical `User` record for the authenticated caller.
 Used at app launch and after profile edits or subscription changes.
 
 Response: `User`
+
+### `DELETE /api/users/me`
+
+Permanently deletes the authenticated caller's account and all associated data
+(videos, bookmarks, conversations, messages, profile views, scouting boards,
+subscription, block/report rows), plus their Firebase Auth user. Required for
+App Store compliance. Returns `204 No Content`.
 
 ### `GET /api/users/{id}`
 
@@ -158,6 +170,20 @@ Paginated discover feed. Returns at most 10 videos at a time; client paginates
 by incrementing `page`.
 
 Response: `[Video]`
+
+### `GET /api/videos/feed/following?page={n}&size=10`
+
+Same shape as the discover feed, restricted to athletes the caller follows.
+Returns an empty array when the caller follows nobody — the client shows a
+"find people to follow" empty state rather than falling back to discover.
+
+Response: `[Video]`
+
+### `POST /api/videos/{id}/view`
+
+Records one play. Self-views are ignored server-side, so an athlete rewatching
+their own clip does not inflate the counter. Clients call this at most once per
+clip per session. Returns `204 No Content`.
 
 ### `GET /api/videos?athleteId={id}&category=TAPE|CULTURE`
 
@@ -342,6 +368,89 @@ Request:
 
 Response: `Conversation`.
 
+Blocking rules: starting a conversation with (or sending a message to) a user
+who is blocked in either direction returns `403`.
+
+---
+
+## Moderation
+
+User-generated-content safety endpoints (App Store Guideline 1.2). Blocking is
+bidirectional for visibility: blocked users are hidden from the caller's feed,
+search, and inbox, and neither party can message the other.
+
+### `POST /api/reports`
+
+Reports a video, user, or message. The reporter is the authenticated caller.
+Returns `201 Created`.
+
+Request:
+```json
+{ "targetType": "VIDEO|USER|MESSAGE", "targetId": "string", "reason": "string", "details": "string (optional)" }
+```
+
+### `GET /api/blocks`
+
+Returns the IDs of users the caller has blocked.
+
+Response: `["userId", ...]`
+
+### `POST /api/blocks`
+
+Blocks a user. Idempotent. Returns `400` if blocking yourself, otherwise
+`204 No Content`.
+
+Request:
+```json
+{ "userId": "string" }
+```
+
+### `DELETE /api/blocks/{userId}`
+
+Unblocks a user. Idempotent. Returns `204 No Content`.
+
+---
+
+## Follows
+
+Follows are one-directional and need no approval, matching public accounts on
+TikTok and Instagram. The follower is always the authenticated caller.
+
+### `GET /api/follows/following`
+
+IDs of the users the caller follows. The client caches this so the feed and
+profile can render follow state without a request per row.
+
+Response: `["userId"]`
+
+### `POST /api/follows`
+
+Follows a user. Idempotent. Returns `204 No Content`.
+Returns `400` for following yourself and `403` if either party has blocked the
+other.
+
+Request:
+```json
+{ "userId": "string" }
+```
+
+### `DELETE /api/follows/{userId}`
+
+Unfollows a user. Idempotent. Returns `204 No Content`.
+
+### `GET /api/follows/{userId}/counts`
+
+Social counters for one profile. `isFollowing` is relative to the caller.
+
+Response:
+```json
+{
+  "followers": 0,
+  "following": 0,
+  "isFollowing": false
+}
+```
+
 ---
 
 ## Schemas
@@ -354,6 +463,8 @@ Response: `Conversation`.
   "displayName": "string",
   "role": "ATHLETE | RECRUITER | BRAND",
   "tier": "FREE | PRO",
+  "dateOfBirth": "yyyy-MM-dd?",
+  "minor": false,
   "profileImageUrl": "string?",
   "highSchool": "string?",
   "gradYear": 2026,
@@ -382,6 +493,7 @@ Response: `Conversation`.
   "caption": "string",
   "createdAt": "2026-01-01T00:00:00Z",
   "isPinned": false,
+  "viewCount": 0,
   "athleteName": "string",
   "athleteSchool": "string",
   "athleteGradYear": 2026,

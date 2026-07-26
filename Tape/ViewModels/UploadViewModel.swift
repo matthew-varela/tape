@@ -36,10 +36,16 @@ enum UploadPhase: String {
 @Observable
 @MainActor
 final class UploadViewModel {
+    /// Hard ceiling on a published clip. Anything longer must be trimmed down
+    /// to this before it can be posted.
+    static let maxClipDuration: Double = 60
+    /// Shortest clip worth posting.
+    static let minClipDuration: Double = 5
+
     var selectedVideoURL: URL?
     var videoDuration: Double = 0
     var trimStart: Double = 0
-    var trimEnd: Double = 15
+    var trimEnd: Double = UploadViewModel.maxClipDuration
     var needsTrimming: Bool = false
     var selectedCategory: VideoCategory = .tape
     var selectedTags: Set<String> = []
@@ -69,9 +75,9 @@ final class UploadViewModel {
         do {
             let duration = try await asset.load(.duration)
             videoDuration = CMTimeGetSeconds(duration)
-            needsTrimming = videoDuration > 15
+            needsTrimming = videoDuration > Self.maxClipDuration
             trimStart = 0
-            trimEnd = min(15, videoDuration)
+            trimEnd = min(Self.maxClipDuration, videoDuration)
             await generateThumbnails(asset: asset)
         } catch {
             errorMessage = "Failed to load video: \(error.localizedDescription)"
@@ -237,6 +243,8 @@ final class UploadViewModel {
             deleteTempFile(at: videoFileURL)
 
             isPublished = true
+            // Let the feed know so the new clip shows up without a relaunch.
+            NotificationCenter.default.post(name: .tapeVideoPublished, object: nil)
             reset()
 
         } catch {
@@ -258,7 +266,7 @@ final class UploadViewModel {
         selectedVideoURL = nil
         videoDuration = 0
         trimStart = 0
-        trimEnd = 15
+        trimEnd = Self.maxClipDuration
         needsTrimming = false
         selectedTags = []
         caption = ""

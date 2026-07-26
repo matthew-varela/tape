@@ -20,8 +20,8 @@ final class InboxViewModel {
 
     /// The two polling Tasks. We keep them as properties so we can cancel them
     /// when the view disappears or when polling moves to a new conversation.
-    private var conversationPollingTask: Task<Void, Never>?
-    private var messagePollingTask: Task<Void, Never>?
+    private nonisolated(unsafe) var conversationPollingTask: Task<Void, Never>?
+    private nonisolated(unsafe) var messagePollingTask: Task<Void, Never>?
 
     /// How long to wait between poll cycles. 8 seconds is a balance between
     /// "feels live" and "doesn't burn battery / hammer the server".

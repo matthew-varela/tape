@@ -18,7 +18,7 @@ import Foundation
 final class FirebaseAuthService: AuthServiceProtocol {
     private let client = APIClient.shared
 
-    func signUp(email: String, password: String, displayName: String, role: UserRole) async throws -> User {
+    func signUp(email: String, password: String, displayName: String, role: UserRole, dateOfBirth: Date) async throws -> User {
         let result = try await Auth.auth().createUser(withEmail: email, password: password)
 
         // Set the displayName on the Firebase profile so any non-backend code
@@ -32,18 +32,31 @@ final class FirebaseAuthService: AuthServiceProtocol {
             let email: String
             let displayName: String
             let role: String
+            let dateOfBirth: String
         }
 
         let body = SignUpBody(
             firebaseUid: result.user.uid,
             email: email,
             displayName: displayName,
-            role: role.rawValue.uppercased()
+            role: role.rawValue.uppercased(),
+            dateOfBirth: Self.isoDateFormatter.string(from: dateOfBirth)
         )
 
         let user: User = try await client.post("/api/auth/signup", body: body)
         return user
     }
+
+    /// Formats a date as ISO `yyyy-MM-dd` (date only) for the backend's
+    /// `LocalDate dateOfBirth` field. Fixed locale/timezone so the calendar day
+    /// the user picked is preserved regardless of device settings.
+    private static let isoDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 
     func signIn(email: String, password: String) async throws -> User {
         let result = try await Auth.auth().signIn(withEmail: email, password: password)

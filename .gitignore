@@ -10,6 +10,14 @@ backend/target/
 # Secrets folder
 backend/secrets/
 
+# Service account keys, wherever they end up. These have been saved into the
+# repo under innocuous names before, so match on content-bearing name patterns
+# rather than trusting the location.
+*service-account*.json
+*serviceaccount*.json
+*firebase-adminsdk*.json
+google-credentials*.json
+
 # IDE
 .idea/
 *.iml

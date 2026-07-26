@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AuthViewModel.self) private var authVM
     @State private var showPaywall = false
+    @State private var showDeleteConfirm = false
 
     private var currentUser: User? {
         if case .authenticated(let user) = authVM.authState { return user }
@@ -83,12 +84,18 @@ struct SettingsView: View {
 
                     // App
                     Section {
-                        Label("Notifications", systemImage: "bell.badge")
-                            .foregroundStyle(.white)
-                        Label("Privacy", systemImage: "lock.shield")
-                            .foregroundStyle(.white)
-                        Label("Help & Support", systemImage: "questionmark.circle")
-                            .foregroundStyle(.white)
+                        Link(destination: AppLinks.privacyPolicy) {
+                            Label("Privacy Policy", systemImage: "lock.shield")
+                                .foregroundStyle(.white)
+                        }
+                        Link(destination: AppLinks.termsOfService) {
+                            Label("Terms of Service", systemImage: "doc.text")
+                                .foregroundStyle(.white)
+                        }
+                        Link(destination: AppLinks.support) {
+                            Label("Help & Support", systemImage: "questionmark.circle")
+                                .foregroundStyle(.white)
+                        }
                     } header: {
                         Text("App")
                     }
@@ -101,6 +108,19 @@ struct SettingsView: View {
                         } label: {
                             Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                         }
+                    }
+                    .listRowBackground(Color.tapeCardBg)
+
+                    // Account deletion (App Store requirement for account-based apps)
+                    Section {
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            Label("Delete Account", systemImage: "trash")
+                        }
+                        .disabled(authVM.isLoading)
+                    } footer: {
+                        Text("Permanently deletes your account, profile, videos, messages, and all associated data. This cannot be undone.")
                     }
                     .listRowBackground(Color.tapeCardBg)
 
@@ -126,6 +146,14 @@ struct SettingsView: View {
                 if let user = currentUser {
                     ProPaywallSheet(userRole: user.role)
                 }
+            }
+            .alert("Delete Account?", isPresented: $showDeleteConfirm) {
+                Button("Cancel", role: .cancel) {}
+                Button("Delete", role: .destructive) {
+                    Task { await authVM.deleteAccount() }
+                }
+            } message: {
+                Text("This permanently deletes your account and all of your data. This action cannot be undone.")
             }
         }
     }

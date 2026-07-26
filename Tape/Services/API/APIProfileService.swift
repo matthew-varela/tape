@@ -64,4 +64,10 @@ final class APIProfileService: ProfileServiceProtocol {
     func updateProfile(_ user: User) async throws {
         let _: User = try await client.put("/api/users/\(user.id)", body: user)
     }
+
+    /// `DELETE /api/users/me` — permanently deletes the caller's account. The
+    /// server identifies the user from the bearer token and returns 204.
+    func deleteAccount() async throws {
+        try await client.deleteVoid("/api/users/me")
+    }
 }

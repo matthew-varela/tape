@@ -16,18 +16,22 @@ final class ProfileViewModel {
     var tapeVideos: [Video] = []
     var cultureVideos: [Video] = []
     var profileViewers: [User] = []
+    var followCounts: FollowCounts = .empty
     var isLoading = false
     var errorMessage: String?
 
     private let profileService: ProfileServiceProtocol
     private let videoService: VideoServiceProtocol
+    private let followService: FollowServiceProtocol
 
     init(
         profileService: ProfileServiceProtocol = MockProfileService(),
-        videoService: VideoServiceProtocol = MockVideoService()
+        videoService: VideoServiceProtocol = MockVideoService(),
+        followService: FollowServiceProtocol = MockFollowService()
     ) {
         self.profileService = profileService
         self.videoService = videoService
+        self.followService = followService
     }
 
     func loadProfile(athleteID: String) async {
@@ -44,6 +48,33 @@ final class ProfileViewModel {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    func loadFollowCounts(athleteID: String) async {
+        do {
+            followCounts = try await followService.fetchCounts(for: athleteID)
+        } catch {
+            // Swallow: the profile still renders without social counters.
+        }
+    }
+
+    /// Optimistic follow toggle so the button flips instantly; the counter is
+    /// adjusted alongside it and rolled back together on failure.
+    func toggleFollow(athleteID: String) async {
+        let previous = followCounts
+        followCounts.isFollowing.toggle()
+        followCounts.followers += followCounts.isFollowing ? 1 : -1
+
+        do {
+            if previous.isFollowing {
+                try await followService.unfollow(athleteID)
+            } else {
+                try await followService.follow(athleteID)
+            }
+        } catch {
+            followCounts = previous
+            errorMessage = error.localizedDescription
+        }
     }
 
     func loadProfileViewers(athleteID: String) async {

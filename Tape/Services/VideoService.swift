@@ -9,6 +9,14 @@ import Foundation
 ///   - `APIVideoService`   (production REST calls)
 protocol VideoServiceProtocol {
     func fetchFeedVideos(page: Int) async throws -> [Video]
+
+    /// Feed limited to athletes the signed-in user follows. Returns an empty
+    /// page when they follow nobody.
+    func fetchFollowingFeedVideos(page: Int) async throws -> [Video]
+
+    /// Records one play. The server ignores self-views.
+    func recordView(videoID: String) async throws
+
     func fetchVideos(for athleteID: String) async throws -> [Video]
     func fetchVideos(for athleteID: String, category: VideoCategory) async throws -> [Video]
     func fetchFilteredVideos(filters: FeedFilters) async throws -> [Video]
@@ -58,6 +66,17 @@ final class MockVideoService: VideoServiceProtocol {
         guard start < videos.count else { return [] }
         let end = min(start + pageSize, videos.count)
         return Array(videos[start..<end])
+    }
+
+    func fetchFollowingFeedVideos(page: Int) async throws -> [Video] {
+        try await fetchFeedVideos(page: page)
+    }
+
+    func recordView(videoID: String) async throws {
+        try await Task.sleep(for: .milliseconds(40))
+        if let i = videos.firstIndex(where: { $0.id == videoID }) {
+            videos[i].viewCount += 1
+        }
     }
 
     func fetchVideos(for athleteID: String) async throws -> [Video] {

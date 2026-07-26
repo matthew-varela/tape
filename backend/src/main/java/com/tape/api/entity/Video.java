@@ -39,6 +39,10 @@ public class Video {
 
     private boolean isPinned;
 
+    /** Monotonic play counter, incremented by POST /api/videos/{id}/view. */
+    @Column(nullable = false)
+    private long viewCount;
+
     @PrePersist
     private void onCreate() {
         if (id == null) id = UUID.randomUUID().toString();
@@ -72,4 +76,7 @@ public class Video {
 
     public boolean isPinned() { return isPinned; }
     public void setPinned(boolean pinned) { isPinned = pinned; }
+
+    public long getViewCount() { return viewCount; }
+    public void setViewCount(long viewCount) { this.viewCount = viewCount; }
 }

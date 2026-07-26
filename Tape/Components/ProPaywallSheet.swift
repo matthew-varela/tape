@@ -37,6 +37,8 @@ struct ProPaywallSheet: View {
                                 .multilineTextAlignment(.center)
                         }
 
+                        subscriptionDisclosure
+
                         Button("Maybe Later") { dismiss() }
                             .foregroundStyle(.secondary)
                     }
@@ -135,6 +137,26 @@ struct ProPaywallSheet: View {
         }
         .font(.footnote)
         .foregroundStyle(.secondary)
+    }
+
+    /// Apple-required auto-renewable subscription disclosure: what's being sold,
+    /// price/renewal terms, and links to Terms (EULA) and Privacy Policy.
+    private var subscriptionDisclosure: some View {
+        VStack(spacing: 8) {
+            Text("Tape Pro — \(monthlyProduct?.displayPrice ?? "$9.99")/month after a 1-week free trial. Payment is charged to your Apple ID at the end of the trial. The subscription auto-renews monthly unless canceled at least 24 hours before the end of the current period. Manage or cancel anytime in your App Store account settings.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 6) {
+                Link("Terms of Use", destination: AppLinks.termsOfService)
+                Text("·").foregroundStyle(.secondary)
+                Link("Privacy Policy", destination: AppLinks.privacyPolicy)
+            }
+            .font(.caption2)
+            .tint(Color.tapeRed)
+        }
+        .padding(.top, 4)
     }
 
     private func featureRow(_ feature: ProFeature) -> some View {

@@ -6,27 +6,74 @@ import com.tape.api.entity.User;
 import com.tape.api.entity.Video;
 import com.tape.api.enums.SubscriptionTier;
 import com.tape.api.enums.VideoCategory;
+import com.tape.api.repository.FollowRepository;
 import com.tape.api.repository.VideoRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class VideoService {
 
     private final VideoRepository videoRepo;
     private final UserService userService;
+    private final ModerationService moderationService;
+    private final FollowRepository followRepo;
 
-    public VideoService(VideoRepository videoRepo, UserService userService) {
+    public VideoService(VideoRepository videoRepo,
+                        UserService userService,
+                        ModerationService moderationService,
+                        FollowRepository followRepo) {
         this.videoRepo = videoRepo;
         this.userService = userService;
+        this.moderationService = moderationService;
+        this.followRepo = followRepo;
     }
 
-    public Page<Video> getFeed(int page, int size) {
-        return videoRepo.findAllByOrderByCreatedAtDesc(PageRequest.of(page, size));
+    /** Feed for the given caller, excluding any blocked users in either direction. */
+    public Page<Video> getFeed(int page, int size, String callerUid) {
+        PageRequest pageRequest = PageRequest.of(page, size);
+        Set<String> hidden = moderationService.getHiddenUserIds(callerUid);
+        if (hidden.isEmpty()) {
+            return videoRepo.findAllByOrderByCreatedAtDesc(pageRequest);
+        }
+        return videoRepo.findFeedExcluding(hidden, pageRequest);
+    }
+
+    /**
+     * Feed limited to athletes the caller follows. Returns an empty page when
+     * the caller follows nobody so the client can show a "find people to
+     * follow" empty state instead of silently falling back to discover.
+     */
+    public Page<Video> getFollowingFeed(int page, int size, String callerUid) {
+        PageRequest pageRequest = PageRequest.of(page, size);
+        Set<String> hidden = moderationService.getHiddenUserIds(callerUid);
+        List<String> followed = followRepo.findFolloweeIds(callerUid).stream()
+            .filter(id -> !hidden.contains(id))
+            .toList();
+        if (followed.isEmpty()) {
+            return Page.empty(pageRequest);
+        }
+        return videoRepo.findFeedByAthleteIds(followed, pageRequest);
+    }
+
+    /**
+     * Records one play. Views by the owner don't count, so an athlete can't
+     * inflate their own numbers by rewatching their profile.
+     */
+    @Transactional
+    public void recordView(String videoId, String callerUid) {
+        Video video = videoRepo.findById(videoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found"));
+        if (video.getAthlete().getId().equals(callerUid)) {
+            return;
+        }
+        videoRepo.incrementViewCount(videoId);
     }
 
     /**
@@ -42,9 +89,13 @@ public class VideoService {
         return videoRepo.findByAthleteIdAndCategoryPinnedFirst(athleteId, category);
     }
 
-    public List<Video> getFilteredVideos(String position, String state, String sport, Integer gradYear, Double minGpa) {
+    public List<Video> getFilteredVideos(String position, String state, String sport, Integer gradYear, Double minGpa, String callerUid) {
         List<User> athletes = userService.searchAthletes(position, state, sport, gradYear, minGpa);
-        List<String> athleteIds = athletes.stream().map(User::getId).toList();
+        Set<String> hidden = moderationService.getHiddenUserIds(callerUid);
+        List<String> athleteIds = athletes.stream()
+            .map(User::getId)
+            .filter(id -> !hidden.contains(id))
+            .toList();
         if (athleteIds.isEmpty()) return List.of();
         return videoRepo.findByAthleteIds(athleteIds);
     }
@@ -93,6 +144,7 @@ public class VideoService {
             v.getCaption(),
             v.getCreatedAt(),
             v.isPinned(),
+            v.getViewCount(),
             a.getDisplayName(),
             a.getHighSchool(),
             a.getGradYear() != null ? a.getGradYear() : 0,

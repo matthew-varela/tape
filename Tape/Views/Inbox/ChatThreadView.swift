@@ -11,9 +11,20 @@ struct ChatThreadView: View {
     let conversation: Conversation
     let currentUser: User
     @Environment(AuthViewModel.self) private var authVM
+    @Environment(\.dismiss) private var dismiss
     @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var messageText = ""
     @State private var showPaywall = false
+
+    // Moderation
+    private let moderationService = APIModerationService()
+    @State private var showReportDialog = false
+    @State private var showBlockDialog = false
+    @State private var showReportConfirmation = false
+
+    private var otherParticipantID: String {
+        conversation.participantIDs.first { $0 != currentUser.id } ?? ""
+    }
 
     var body: some View {
         ZStack {
@@ -47,6 +58,21 @@ struct ChatThreadView: View {
         .navigationTitle(conversation.otherParticipantName(currentUserID: currentUser.id))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button(role: .destructive) { showReportDialog = true } label: {
+                        Label("Report", systemImage: "flag")
+                    }
+                    Button(role: .destructive) { showBlockDialog = true } label: {
+                        Label("Block User", systemImage: "hand.raised")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundStyle(.white)
+                }
+            }
+        }
         .task {
             await inboxVM.loadMessages(conversationID: conversation.id)
             inboxVM.startMessagePolling(conversationID: conversation.id)
@@ -56,6 +82,48 @@ struct ChatThreadView: View {
         }
         .sheet(isPresented: $showPaywall) {
             ProPaywallSheet(userRole: currentUser.role)
+        }
+        .confirmationDialog("Report", isPresented: $showReportDialog, titleVisibility: .visible) {
+            ForEach(ModerationReason.all, id: \.self) { reason in
+                Button(reason) { submitReport(reason: reason) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Why are you reporting this conversation?")
+        }
+        .confirmationDialog("Block \(conversation.otherParticipantName(currentUserID: currentUser.id))?",
+                            isPresented: $showBlockDialog, titleVisibility: .visible) {
+            Button("Block", role: .destructive) { submitBlock() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You won't be able to message each other and won't see each other's content.")
+        }
+        .alert("Thanks for reporting", isPresented: $showReportConfirmation) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Our team will review this conversation.")
+        }
+    }
+
+    // MARK: - Moderation actions
+
+    private func submitReport(reason: String) {
+        Task {
+            try? await moderationService.report(
+                targetType: .user,
+                targetId: otherParticipantID,
+                reason: reason,
+                details: nil
+            )
+            await MainActor.run { showReportConfirmation = true }
+        }
+    }
+
+    private func submitBlock() {
+        Task {
+            try? await moderationService.blockUser(otherParticipantID)
+            inboxVM.stopPolling()
+            await MainActor.run { dismiss() }
         }
     }
 

@@ -1,9 +1,9 @@
 import AVFoundation
 import SwiftUI
 
-/// Custom trim UI for clips longer than 15 seconds. The user drags two
-/// handles on a thumbnail strip to choose start/end, and the preview player
-/// loops the selected range continuously so they can preview their cut.
+/// Custom trim UI for clips longer than the one-minute publish limit. The user
+/// drags two handles on a thumbnail strip to choose start/end, and the preview
+/// player loops the selected range continuously so they can preview their cut.
 ///
 /// We don't actually export the trim here — that happens later inside
 /// `UploadViewModel.publish` so cancellation can fall through cleanly.
@@ -13,11 +13,16 @@ struct VideoTrimmerView: View {
     let onDone: () -> Void
 
     @State private var player: AVPlayer?
-    @State private var isDraggingStart = false
-    @State private var isDraggingEnd = false
+
+    private let minDuration = UploadViewModel.minClipDuration
+    private let maxDuration = UploadViewModel.maxClipDuration
 
     private var trimDuration: Double {
         uploadVM.trimEnd - uploadVM.trimStart
+    }
+
+    private var isValidSelection: Bool {
+        trimDuration >= minDuration && trimDuration <= maxDuration
     }
 
     var body: some View {
@@ -26,7 +31,7 @@ struct VideoTrimmerView: View {
                 .font(.title3.bold())
                 .foregroundStyle(.white)
 
-            Text("Select a 5-15 second window")
+            Text("Select a \(Int(minDuration))–\(Int(maxDuration)) second window")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
@@ -40,7 +45,7 @@ struct VideoTrimmerView: View {
             // Duration indicator
             Text(String(format: "%.1fs selected", trimDuration))
                 .font(.headline)
-                .foregroundStyle(trimDuration >= 5 && trimDuration <= 15 ? Color.tapeRed : Color.red)
+                .foregroundStyle(isValidSelection ? Color.tapeRed : Color.red)
 
             // Thumbnail strip with trim handles
             thumbnailStrip
@@ -65,11 +70,11 @@ struct VideoTrimmerView: View {
                     .fontWeight(.semibold)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(trimDuration >= 5 && trimDuration <= 15 ? Color.tapeRed : Color.gray)
+                    .background(isValidSelection ? Color.tapeRed : Color.gray)
                     .foregroundStyle(.white)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
-            .disabled(trimDuration < 5 || trimDuration > 15)
+            .disabled(!isValidSelection)
             .padding(.horizontal, 20)
         }
         .padding(.top, 16)
@@ -124,8 +129,11 @@ struct VideoTrimmerView: View {
                             .onChanged { value in
                                 let newFraction = max(0, min(value.location.x - 16, totalWidth)) / totalWidth
                                 let newTime = newFraction * duration
-                                if uploadVM.trimEnd - newTime >= 5 {
+                                // Dragging the start in may leave a window
+                                // longer than the limit, so pull the end along.
+                                if uploadVM.trimEnd - newTime >= minDuration {
                                     uploadVM.trimStart = max(0, newTime)
+                                    uploadVM.trimEnd = min(uploadVM.trimEnd, uploadVM.trimStart + maxDuration)
                                 }
                             }
                     )
@@ -137,7 +145,8 @@ struct VideoTrimmerView: View {
                             .onChanged { value in
                                 let newFraction = max(0, min(value.location.x - 16, totalWidth)) / totalWidth
                                 let newTime = newFraction * duration
-                                if newTime - uploadVM.trimStart >= 5 && newTime - uploadVM.trimStart <= 15 {
+                                let window = newTime - uploadVM.trimStart
+                                if window >= minDuration && window <= maxDuration {
                                     uploadVM.trimEnd = min(duration, newTime)
                                 }
                             }

@@ -106,6 +106,10 @@ struct User: Codable, Identifiable, Hashable {
     var tier: SubscriptionTier
     var profileImageURL: String?
 
+    // Age gating (ISO yyyy-MM-dd). `isMinor` is derived server-side.
+    var dateOfBirth: String?
+    var isMinor: Bool
+
     // Athlete-specific
     var highSchool: String?
     var gradYear: Int?
@@ -130,6 +134,8 @@ struct User: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, email, displayName, role, tier
+        case dateOfBirth
+        case isMinor = "minor"
         case profileImageURL = "profileImageUrl"
         case highSchool, gradYear, sport, position, state
         case height, weight, fortyYardDash, gpa
@@ -144,6 +150,8 @@ struct User: Codable, Identifiable, Hashable {
         displayName: String,
         role: UserRole,
         tier: SubscriptionTier = .free,
+        dateOfBirth: String? = nil,
+        isMinor: Bool = false,
         profileImageURL: String? = nil,
         highSchool: String? = nil,
         gradYear: Int? = nil,
@@ -165,6 +173,8 @@ struct User: Codable, Identifiable, Hashable {
         self.displayName = displayName
         self.role = role
         self.tier = tier
+        self.dateOfBirth = dateOfBirth
+        self.isMinor = isMinor
         self.profileImageURL = profileImageURL
         self.highSchool = highSchool
         self.gradYear = gradYear
@@ -189,6 +199,8 @@ struct User: Codable, Identifiable, Hashable {
         displayName = try c.decode(String.self, forKey: .displayName)
         role = try c.decode(UserRole.self, forKey: .role)
         tier = try c.decodeIfPresent(SubscriptionTier.self, forKey: .tier) ?? .free
+        dateOfBirth = try c.decodeIfPresent(String.self, forKey: .dateOfBirth)
+        isMinor = try c.decodeIfPresent(Bool.self, forKey: .isMinor) ?? false
         profileImageURL = try c.decodeIfPresent(String.self, forKey: .profileImageURL)
         highSchool = try c.decodeIfPresent(String.self, forKey: .highSchool)
         gradYear = try c.decodeIfPresent(Int.self, forKey: .gradYear)

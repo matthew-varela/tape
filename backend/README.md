@@ -46,10 +46,37 @@ and uses an in-memory H2 database. The test suite covers:
 | `SPRING_DATASOURCE_URL` | JDBC URL for production database | H2 in-memory |
 | `SPRING_DATASOURCE_USERNAME` | DB username | `sa` |
 | `SPRING_DATASOURCE_PASSWORD` | DB password | _(empty)_ |
+| `SPRING_FLYWAY_ENABLED` | Run Flyway migrations on startup | `true` |
+| `SPRING_JPA_HIBERNATE_DDL_AUTO` | Hibernate schema mode | `validate` |
 | `AWS_S3_REGION` | (Legacy, unused by mobile clients) | `us-east-1` |
 | `AWS_S3_ACCESS_KEY` | (Legacy, unused by mobile clients) | — |
 | `AWS_S3_SECRET_KEY` | (Legacy, unused by mobile clients) | — |
 | `AWS_S3_BUCKET` | (Legacy, unused by mobile clients) | `local-dev` |
+
+---
+
+## Database migrations (Flyway)
+
+The production schema is owned by **Flyway**. Migration scripts live in:
+
+```
+src/main/resources/db/migration/
+  V1__baseline.sql      # full baseline schema (first release)
+  V2__<change>.sql       # each subsequent change is a NEW file
+```
+
+Rules:
+
+- **Never edit an already-applied migration** (including `V1__baseline.sql`).
+  Add a new `V{n}__description.sql` for every schema change.
+- On startup against PostgreSQL, Flyway applies any pending migrations, then
+  Hibernate runs in `validate` mode to confirm the entities match the schema.
+- If a deploy ever fails validation due to a column-type mismatch, set
+  `SPRING_JPA_HIBERNATE_DDL_AUTO=none` on Render as a safe fallback — Flyway
+  still applies the schema; only the entity/schema validation step is skipped.
+- **Tests / local** use in-memory H2 with Flyway disabled
+  (`spring.flyway.enabled=false`) and Hibernate `create-drop`, so the
+  PostgreSQL-flavored migrations do not run against H2.
 
 ---
 

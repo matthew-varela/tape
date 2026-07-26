@@ -30,9 +30,10 @@ struct ContentView: View {
     }
 }
 
-/// `MainTabView` is the post-login chrome. Tabs are deliberately the same set
-/// for every role — what's gated happens *inside* each tab (for example
-/// athletes can't open recruiter-only filters in Search).
+/// `MainTabView` is the post-login chrome. Gating mostly happens *inside* each
+/// tab (for example athletes can't open recruiter-only filters in Search); the
+/// one exception is Upload, which is hidden entirely for recruiters and brands
+/// rather than shown as a tab that only ever explains itself.
 struct MainTabView: View {
     let currentUser: User
     @Environment(AuthViewModel.self) private var authVM
@@ -42,8 +43,10 @@ struct MainTabView: View {
             FeedView(currentUser: currentUser)
                 .tabItem { Label("Feed", systemImage: "house.fill") }
 
-            UploadView(currentUser: currentUser)
-                .tabItem { Label("Upload", systemImage: "plus.circle.fill") }
+            if currentUser.role == .athlete {
+                UploadView(currentUser: currentUser)
+                    .tabItem { Label("Upload", systemImage: "plus.circle.fill") }
+            }
 
             InboxListView(currentUser: currentUser)
                 .tabItem { Label("Inbox", systemImage: "bubble.left.fill") }

@@ -10,11 +10,42 @@ struct SignUpView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
-    @State private var displayName = ""
+    @State private var firstName = ""
+    @State private var lastName = ""
     @State private var selectedRole: UserRole = .athlete
+    @State private var dateOfBirth = Calendar.current.date(byAdding: .year, value: -16, to: .now) ?? .now
+
+    /// Minimum age to create an account (COPPA floor).
+    private let minimumAge = 13
+
+    private var age: Int {
+        Calendar.current.dateComponents([.year], from: dateOfBirth, to: .now).year ?? 0
+    }
+
+    private var isOldEnough: Bool { age >= minimumAge }
+
+    /// Combined name sent to the backend as `displayName`.
+    private var fullName: String {
+        [firstName, lastName]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// Earliest and latest selectable birth dates (no future dates; sane floor).
+    private var dobRange: ClosedRange<Date> {
+        let latest = Date.now
+        let earliest = Calendar.current.date(byAdding: .year, value: -100, to: latest) ?? latest
+        return earliest...latest
+    }
 
     private var isFormValid: Bool {
-        !email.isEmpty && !password.isEmpty && password == confirmPassword && !displayName.isEmpty
+        !email.isEmpty
+            && !password.isEmpty
+            && password == confirmPassword
+            && !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && isOldEnough
     }
 
     var body: some View {
@@ -38,7 +69,8 @@ struct SignUpView: View {
         .onChange(of: email) { _, _ in authVM.clearError() }
         .onChange(of: password) { _, _ in authVM.clearError() }
         .onChange(of: confirmPassword) { _, _ in authVM.clearError() }
-        .onChange(of: displayName) { _, _ in authVM.clearError() }
+        .onChange(of: firstName) { _, _ in authVM.clearError() }
+        .onChange(of: lastName) { _, _ in authVM.clearError() }
     }
 
     // MARK: - Subviews
@@ -97,12 +129,21 @@ struct SignUpView: View {
 
     private var formFields: some View {
         VStack(spacing: 14) {
-            TextField("Full Name", text: $displayName)
-                .textContentType(.name)
-                .padding()
-                .background(Color.tapeCardBg)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .foregroundStyle(.white)
+            HStack(spacing: 12) {
+                TextField("First Name", text: $firstName)
+                    .textContentType(.givenName)
+                    .padding()
+                    .background(Color.tapeCardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+
+                TextField("Last Name", text: $lastName)
+                    .textContentType(.familyName)
+                    .padding()
+                    .background(Color.tapeCardBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+            }
 
             TextField("Email", text: $email)
                 .keyboardType(.emailAddress)
@@ -135,6 +176,28 @@ struct SignUpView: View {
                     .font(.caption)
                     .foregroundStyle(.red)
             }
+
+            DatePicker(
+                selection: $dateOfBirth,
+                in: dobRange,
+                displayedComponents: .date
+            ) {
+                Text("Date of Birth")
+                    .foregroundStyle(.white)
+            }
+            .datePickerStyle(.compact)
+            .tint(Color.tapeRed)
+            .padding()
+            .background(Color.tapeCardBg)
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .foregroundStyle(.white)
+
+            if !isOldEnough {
+                Text("You must be at least \(minimumAge) years old to use Tape.")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
     }
 
@@ -153,8 +216,9 @@ struct SignUpView: View {
                 await authVM.signUp(
                     email: email,
                     password: password,
-                    displayName: displayName,
-                    role: selectedRole
+                    displayName: fullName,
+                    role: selectedRole,
+                    dateOfBirth: dateOfBirth
                 )
             }
         } label: {

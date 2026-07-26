@@ -34,12 +34,14 @@ struct VideoPlayerView: UIViewRepresentable {
 }
 
 /// `VideoPlayerManager` owns the `AVPlayer` instances for the currently
-/// visible feed cells. Two responsibilities:
+/// visible feed cells. Three responsibilities:
 ///   1. Lazily build a player per video URL (and reuse it if the cell
 ///      reappears).
-///   2. Ensure exactly one player is unmuted-and-playing at a time. As cells
-///      scroll on/off screen, `play(videoID:)` pauses the previously active
+///   2. Ensure exactly one player is playing at a time. As cells scroll
+///      on/off screen, `makeActive(videoID:)` pauses the previously active
 ///      player.
+///   3. Own the feed's shared mute and play/pause state so the speaker button
+///      and tap-to-pause behave the same across every cell.
 ///
 /// Looping: each player gets a `AVPlayerItemDidPlayToEndTime` observer that
 /// seeks to zero and replays — gives us the TikTok-style infinite loop
@@ -54,6 +56,17 @@ final class VideoPlayerManager {
     private var loopObservers: [String: Any] = [:]
     var activeVideoID: String?
 
+    /// Mute preference survives relaunches the way it does in other feeds.
+    private(set) var isMuted: Bool
+    /// True only when the viewer explicitly tapped to pause the active clip.
+    private(set) var isPaused = false
+
+    private static let muteDefaultsKey = "feed.audio.muted"
+
+    init() {
+        isMuted = UserDefaults.standard.bool(forKey: Self.muteDefaultsKey)
+    }
+
     func player(for video: Video) -> AVPlayer {
         if let existing = players[video.id] {
             return existing
@@ -62,7 +75,7 @@ final class VideoPlayerManager {
             return AVPlayer()
         }
         let player = AVPlayer(url: url)
-        player.isMuted = false
+        player.isMuted = isMuted
         players[video.id] = player
 
         let observer = NotificationCenter.default.addObserver(
@@ -78,26 +91,58 @@ final class VideoPlayerManager {
         return player
     }
 
-    func play(videoID: String) {
+    /// Makes one clip the playing one. Restarting from the top only happens
+    /// when the active clip actually changes, so scrolling back to a cell that
+    /// is already active doesn't jump the playhead.
+    func makeActive(videoID: String) {
         if activeVideoID != videoID {
             if let currentID = activeVideoID {
                 players[currentID]?.pause()
             }
             activeVideoID = videoID
+            isPaused = false
+            players[videoID]?.seek(to: .zero)
         }
-        players[videoID]?.seek(to: .zero)
+        players[videoID]?.isMuted = isMuted
         players[videoID]?.play()
+    }
+
+    /// Resumes the active clip after the feed comes back on screen (tab switch,
+    /// or returning from a pushed profile), unless the viewer had paused it.
+    func resumeActive() {
+        guard !isPaused, let id = activeVideoID else { return }
+        players[id]?.play()
     }
 
     func pause(videoID: String) {
         players[videoID]?.pause()
     }
 
+    /// Stops every player but remembers which clip was active so `resumeActive`
+    /// can pick the feed back up where the viewer left it.
     func pauseAll() {
         for (_, player) in players {
             player.pause()
         }
-        activeVideoID = nil
+    }
+
+    /// Tap-to-pause on the active clip.
+    func togglePlayPause() {
+        guard let id = activeVideoID, let player = players[id] else { return }
+        if isPaused {
+            player.play()
+        } else {
+            player.pause()
+        }
+        isPaused.toggle()
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        UserDefaults.standard.set(isMuted, forKey: Self.muteDefaultsKey)
+        for (_, player) in players {
+            player.isMuted = isMuted
+        }
     }
 
     func cleanup(keepingIDs: Set<String>) {
