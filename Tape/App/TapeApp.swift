@@ -11,11 +11,13 @@ import SwiftUI
 ///   3. Inject the `SubscriptionManager` into the environment so any view can
 ///      check `isSubscribed` or trigger purchases without prop-drilling,
 ///   4. Kick off two long-running observation Tasks — one for Firebase auth
-///      state, one for StoreKit transactions.
+///      state, one for StoreKit transactions,
+///   5. Route incoming deep links (shared clip URLs) through `DeepLinkRouter`.
 @main
 struct TapeApp: App {
     @State private var authViewModel: AuthViewModel
     @State private var subscriptionManager = SubscriptionManager.shared
+    @State private var deepLinkRouter = DeepLinkRouter()
 
     init() {
         FirebaseApp.configure()
@@ -32,7 +34,11 @@ struct TapeApp: App {
             ContentView()
                 .environment(authViewModel)
                 .environment(subscriptionManager)
+                .environment(deepLinkRouter)
                 .preferredColorScheme(.dark)
+                .onOpenURL { url in
+                    deepLinkRouter.handle(url: url)
+                }
                 .task {
                     // Begin Firebase auth state observation. Long-running for
                     // the entire app lifetime; cancellation happens

@@ -210,9 +210,9 @@ struct ProPaywallSheet: View {
             ]
         case .recruiter, .brand:
             return [
-                ProFeature(icon: "line.3.horizontal.decrease.circle.fill", title: "Advanced Filters", description: "Search by position, state, height, GPA and more"),
+                ProFeature(icon: "line.3.horizontal.decrease.circle.fill", title: "Advanced Filters", description: "Filter the feed by position, state, sport, grad year and GPA"),
                 ProFeature(icon: "bubble.left.and.bubble.right.fill", title: "Unlimited Messaging", description: "No cap on direct messages to athletes"),
-                ProFeature(icon: "folder.fill", title: "Custom Boards", description: "Organize scouting boards into custom folders"),
+                ProFeature(icon: "folder.fill", title: "Scouting Boards", description: "Group the athletes you're tracking into named boards"),
             ]
         }
     }

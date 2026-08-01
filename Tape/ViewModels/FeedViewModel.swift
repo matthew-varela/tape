@@ -269,6 +269,9 @@ final class FeedViewModel {
             } else {
                 try await videoService.addBookmark(userID: userID, videoID: videoID)
             }
+            // The profile's Saved tab lives in a different tab with its own
+            // view model and has no other way to learn about this.
+            NotificationCenter.default.post(name: .tapeBookmarksChanged, object: nil)
         } catch {
             // Rollback so the UI matches reality.
             if wasBookmarked {

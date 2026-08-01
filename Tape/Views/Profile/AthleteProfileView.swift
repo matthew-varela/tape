@@ -43,6 +43,9 @@ struct AthleteProfileView: View {
     @State private var navigateToChat: Conversation?
     @State private var showPaywall = false
     @State private var showViewersSheet = false
+    @State private var showAddToBoard = false
+
+    @Environment(SubscriptionManager.self) private var subscriptionManager
 
     // Moderation
     private let moderationService = APIModerationService()
@@ -146,6 +149,13 @@ struct AthleteProfileView: View {
                 ProfileViewersSheet(viewers: profileVM.profileViewers, currentUser: currentUser)
                     .presentationDetents([.medium, .large])
             }
+            .sheet(isPresented: $showAddToBoard) {
+                AddToBoardSheet(
+                    athleteID: athleteID,
+                    athleteName: profileVM.athlete?.displayName ?? "This athlete",
+                    currentUser: currentUser
+                )
+            }
             .confirmationDialog("Report User", isPresented: $showReportDialog, titleVisibility: .visible) {
                 ForEach(ModerationReason.all, id: \.self) { reason in
                     Button(reason) { submitReport(reason: reason) }
@@ -166,6 +176,13 @@ struct AthleteProfileView: View {
             } message: {
                 Text("Our team will review this user.")
             }
+            .onReceive(NotificationCenter.default.publisher(for: .tapeBookmarksChanged)) { _ in
+                // Saving happens in the feed; if the Saved tab is open behind
+                // it, refresh so coming back here shows the new clip.
+                guard isOwnProfile, selectedTab == .saved else { return }
+                Task { await profileVM.loadSavedVideos(userID: currentUser.id) }
+            }
+            .errorToast($profileVM.errorMessage)
         }
     }
 
@@ -223,7 +240,7 @@ struct AthleteProfileView: View {
             // Pro → list sheet.
             if isOwnProfile {
                 Button {
-                    if currentUser.tier == .pro {
+                    if subscriptionManager.hasPro(currentUser) {
                         showViewersSheet = true
                     } else {
                         showPaywall = true
@@ -361,6 +378,16 @@ struct AthleteProfileView: View {
             HStack(spacing: 12) {
                 if canMessage {
                     Button {
+                        // Check the monthly DM cap here rather than letting
+                        // the user compose a message and only then discover
+                        // they've run out.
+                        guard inboxVM.canInitiateMessage(
+                            currentUser: currentUser,
+                            hasPro: subscriptionManager.hasPro(currentUser)
+                        ) else {
+                            showPaywall = true
+                            return
+                        }
                         Task {
                             if let conv = await inboxVM.startConversation(
                                 initiator: currentUser,
@@ -401,6 +428,26 @@ struct AthleteProfileView: View {
                                 .stroke(Color.white.opacity(0.2), lineWidth: 1)
                         }
                     }
+
+                    // Save is a single flat shortlist; boards are the
+                    // organized version of the same idea, so they sit
+                    // together.
+                    Button {
+                        showAddToBoard = true
+                    } label: {
+                        Image(systemName: "folder.badge.plus")
+                            .fontWeight(.semibold)
+                            .frame(width: 52)
+                            .padding(.vertical, 16)
+                            .background(Color.tapeCardBg)
+                            .foregroundStyle(.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                            }
+                    }
+                    .accessibilityLabel("Add to scouting board")
                 }
             }
             .padding(.horizontal, 20)
@@ -500,7 +547,7 @@ struct AthleteProfileView: View {
 
     private func handlePinTap(video: Video) {
         // Pinning is a Pro feature for athletes. Free users see the paywall.
-        if currentUser.tier == .free {
+        if !subscriptionManager.hasPro(currentUser) {
             showPaywall = true
             return
         }
@@ -603,6 +650,7 @@ struct FullScreenVideoPlayer: View {
     @State private var isMuted = false
     @State private var showReportDialog = false
     @State private var showReportConfirmation = false
+    @State private var showShareSheet = false
 
     private let moderationService = APIModerationService()
 
@@ -638,6 +686,17 @@ struct FullScreenVideoPlayer: View {
                             .background(.ultraThinMaterial, in: Circle())
                     }
                     .accessibilityLabel(isMuted ? "Unmute" : "Mute")
+
+                    Button {
+                        showShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.title3)
+                            .foregroundStyle(.white.opacity(0.9))
+                            .padding(10)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .accessibilityLabel("Share")
 
                     Button {
                         showReportDialog = true
@@ -701,6 +760,9 @@ struct FullScreenVideoPlayer: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Our team will review this content.")
+        }
+        .sheet(isPresented: $showShareSheet) {
+            VideoShareSheet(video: video)
         }
         .onAppear {
             AudioSession.activatePlayback()

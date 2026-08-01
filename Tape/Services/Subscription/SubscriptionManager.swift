@@ -142,6 +142,23 @@ final class SubscriptionManager {
         }
     }
 
+    /// Whether `user` should get Pro features right now.
+    ///
+    /// Two sources can disagree. The backend tier on the `User` record is
+    /// authoritative across devices, but it only updates once
+    /// `POST /api/users/me/subscription` succeeds and `/me` is refetched — and
+    /// that sync is best-effort. StoreKit's entitlement is authoritative on
+    /// this device and is correct the instant a purchase completes.
+    ///
+    /// Taking either as sufficient means a paying user is never shown a
+    /// paywall for something they just bought because a background sync lost
+    /// the network. The reverse mistake — briefly granting Pro to someone
+    /// whose backend record hasn't caught up — is far cheaper than charging
+    /// someone and then locking them out.
+    func hasPro(_ user: User) -> Bool {
+        user.tier == .pro || isSubscribed
+    }
+
     /// Tells the backend the user's subscription state changed. Best-effort —
     /// StoreKit is the source of truth on device, so a failed sync will just
     /// be retried on the next entitlement refresh.

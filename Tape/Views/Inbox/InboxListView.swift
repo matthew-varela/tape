@@ -11,7 +11,6 @@ struct InboxListView: View {
     @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var selectedConversation: Conversation?
     @State private var navigateToProfile: String?
-    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -63,9 +62,7 @@ struct InboxListView: View {
             .navigationDestination(item: $navigateToProfile) { userID in
                 AthleteProfileView(athleteID: userID, currentUser: currentUser)
             }
-            .sheet(isPresented: $showPaywall) {
-                ProPaywallSheet(userRole: currentUser.role)
-            }
+            .errorToast($inboxVM.errorMessage)
         }
     }
 

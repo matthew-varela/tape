@@ -111,8 +111,13 @@ struct FeedFilterSheet: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                         }
 
+                        // Resetting only the local bindings left the feed still
+                        // filtered until Apply was tapped separately, which
+                        // read as the button doing nothing.
                         Button("Reset All") {
                             filters = FeedFilters()
+                            onApply()
+                            dismiss()
                         }
                         .foregroundStyle(.secondary)
                     }

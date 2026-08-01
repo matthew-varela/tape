@@ -46,14 +46,18 @@ struct UploadView: View {
                             showTagSelection = true
                         }
                     } else {
-                        TagSelectionView(uploadVM: uploadVM) {
-                            Task {
-                                await uploadVM.publish(currentUser: currentUser)
-                                if uploadVM.isPublished {
-                                    showSuccessAlert = true
+                        TagSelectionView(
+                            uploadVM: uploadVM,
+                            onPublish: {
+                                Task {
+                                    await uploadVM.publish(currentUser: currentUser)
+                                    if uploadVM.isPublished {
+                                        showSuccessAlert = true
+                                    }
                                 }
-                            }
-                        }
+                            },
+                            sport: currentUser.sport
+                        )
                     }
                 }
             }

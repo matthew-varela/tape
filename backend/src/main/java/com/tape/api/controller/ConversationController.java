@@ -57,6 +57,18 @@ public class ConversationController {
     }
 
     /**
+     * Marks the other participant's messages in this thread as read. Called
+     * when the caller opens the thread. Idempotent — re-reading an already
+     * read thread is a no-op.
+     */
+    @PostMapping("/{id}/read")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void markRead(@PathVariable String id) {
+        String uid = SecurityUtils.requireFirebaseUid();
+        messageService.markRead(id, uid);
+    }
+
+    /**
      * Sends a message. The sender is always the authenticated caller;
      * the {@code senderId} body field is accepted but ignored.
      * Free-tier users are capped at 10 DMs per month.

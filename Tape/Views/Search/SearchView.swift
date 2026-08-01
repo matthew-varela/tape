@@ -19,6 +19,7 @@ struct SearchView: View {
     @State private var selectedFilters = SearchFilters()
     @State private var showFilters = false
     @State private var navigateToProfile: String?
+    @State private var errorMessage: String?
 
     /// The currently in-flight search Task, kept so we can cancel it whenever
     /// the inputs change.
@@ -55,6 +56,7 @@ struct SearchView: View {
                 await runSearch()
             }
             .onChange(of: searchText) { _, _ in scheduleSearch() }
+            .errorToast($errorMessage)
         }
     }
 
@@ -225,7 +227,10 @@ struct SearchView: View {
             )
             searchResults = results
         } catch {
-            // Swallow — keep previous results on transient failure.
+            // Previous results stay on screen — they're still the most useful
+            // thing available — but the user is told the list is stale rather
+            // than being left to assume nothing matched.
+            errorMessage = "Search didn't go through. Showing your last results."
         }
     }
 }

@@ -13,6 +13,8 @@ struct SavedPlayersView: View {
         savedAthleteService: APISavedAthleteService()
     )
     @State private var selectedAthleteID: String?
+    /// Athlete whose board picker is open, if any.
+    @State private var addToBoardTarget: User?
 
     var body: some View {
         ZStack {
@@ -38,6 +40,14 @@ struct SavedPlayersView: View {
                                 Label("Remove", systemImage: "bookmark.slash")
                             }
                         }
+                        .swipeActions(edge: .leading) {
+                            Button {
+                                addToBoardTarget = athlete
+                            } label: {
+                                Label("Add to Board", systemImage: "folder.badge.plus")
+                            }
+                            .tint(Color.tapeRed)
+                        }
                     }
                 }
                 .listStyle(.plain)
@@ -52,6 +62,14 @@ struct SavedPlayersView: View {
         .navigationDestination(item: $selectedAthleteID) { id in
             AthleteProfileView(athleteID: id, currentUser: currentUser)
         }
+        .sheet(item: $addToBoardTarget) { athlete in
+            AddToBoardSheet(
+                athleteID: athlete.id,
+                athleteName: athlete.displayName,
+                currentUser: currentUser
+            )
+        }
+        .errorToast($viewModel.errorMessage)
     }
 
     private func athleteRow(_ athlete: User) -> some View {

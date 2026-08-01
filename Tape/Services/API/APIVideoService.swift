@@ -26,6 +26,10 @@ final class APIVideoService: VideoServiceProtocol {
         try await client.postVoid("/api/videos/\(videoID)/view", body: Empty())
     }
 
+    func fetchVideo(id: String) async throws -> Video {
+        try await client.get("/api/videos/\(id)")
+    }
+
     func fetchVideos(for athleteID: String) async throws -> [Video] {
         try await client.get("/api/videos", query: ["athleteId": athleteID])
     }

@@ -23,6 +23,10 @@ final class ProfileViewModel {
     var isLoading = false
     var errorMessage: String?
 
+    /// Guards against overlapping Saved-tab fetches when the tab is reopened
+    /// while a previous load is still in flight.
+    private var isLoadingSavedVideos = false
+
     private let profileService: ProfileServiceProtocol
     private let videoService: VideoServiceProtocol
     private let followService: FollowServiceProtocol
@@ -85,20 +89,25 @@ final class ProfileViewModel {
 
     // MARK: - Saved
 
-    /// Clips the signed-in user has bookmarked. Owner-only, so this is loaded
-    /// lazily when the Saved tab is first opened.
+    /// Clips the signed-in user has bookmarked. Owner-only, loaded when the
+    /// Saved tab is opened.
+    ///
+    /// This refetches on every open rather than caching after the first load.
+    /// Bookmarks are added from the feed — a different tab entirely — so a
+    /// cached list is stale the moment the user saves anything, which is
+    /// exactly when they're most likely to come looking for it. The existing
+    /// list stays on screen while the refetch runs so reopening the tab
+    /// doesn't flash empty.
     func loadSavedVideos(userID: String) async {
-        guard savedVideos.isEmpty else { return }
+        guard !isLoadingSavedVideos else { return }
+        isLoadingSavedVideos = true
+        defer { isLoadingSavedVideos = false }
+
         do {
             savedVideos = try await videoService.fetchBookmarkedVideos(userID: userID)
         } catch {
             errorMessage = error.localizedDescription
         }
-    }
-
-    func refreshSavedVideos(userID: String) async {
-        savedVideos = []
-        await loadSavedVideos(userID: userID)
     }
 
     func loadSavedState(athleteID: String) async {

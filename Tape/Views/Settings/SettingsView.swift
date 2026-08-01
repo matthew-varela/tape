@@ -5,12 +5,31 @@ import SwiftUI
 /// their subscription (open the paywall), and sign out.
 struct SettingsView: View {
     @Environment(AuthViewModel.self) private var authVM
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     @State private var showPaywall = false
     @State private var showDeleteConfirm = false
+    @State private var deleteError: String?
 
     private var currentUser: User? {
         if case .authenticated(let user) = authVM.authState { return user }
         return nil
+    }
+
+    /// True when the user has Pro by either source of truth. The backend tier
+    /// can trail a fresh purchase until `/me` is refetched, so the StoreKit
+    /// entitlement counts too.
+    private var isPro: Bool {
+        guard let currentUser else { return false }
+        return subscriptionManager.hasPro(currentUser)
+    }
+
+    /// Marketing version and build straight from the bundle, so a shipped
+    /// build can never disagree with what this screen claims.
+    private var versionLabel: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "1"
+        return "Tape v\(version) (\(build))"
     }
 
     var body: some View {
@@ -41,11 +60,11 @@ struct SettingsView: View {
 
                                 Spacer()
 
-                                Text(user.tier == .pro ? "PRO" : "FREE")
+                                Text(isPro ? "PRO" : "FREE")
                                     .font(.caption.bold())
                                     .padding(.horizontal, 10)
                                     .padding(.vertical, 4)
-                                    .background(user.tier == .pro ? Color.tapeRed : Color.tapeCardBg)
+                                    .background(isPro ? Color.tapeRed : Color.tapeCardBg)
                                     .foregroundStyle(.white)
                                     .clipShape(Capsule())
                             }
@@ -57,11 +76,28 @@ struct SettingsView: View {
 
                     // Subscription
                     Section {
+                        if isPro {
+                            // Apple requires subscribers to be able to reach
+                            // their subscription management; there is no
+                            // in-app way to change a plan, so link out.
+                            Link(destination: AppLinks.manageSubscription) {
+                                Label("Manage Subscription", systemImage: "crown.fill")
+                                    .foregroundStyle(Color.tapeRed)
+                            }
+                        } else {
+                            Button {
+                                showPaywall = true
+                            } label: {
+                                Label("Upgrade to Pro", systemImage: "crown.fill")
+                                    .foregroundStyle(Color.tapeRed)
+                            }
+                        }
+
                         Button {
-                            showPaywall = true
+                            Task { await subscriptionManager.restore() }
                         } label: {
-                            Label("Upgrade to Pro", systemImage: "crown.fill")
-                                .foregroundStyle(Color.tapeRed)
+                            Label("Restore Purchases", systemImage: "arrow.clockwise")
+                                .foregroundStyle(.white)
                         }
                     } header: {
                         Text("Subscription")
@@ -80,6 +116,21 @@ struct SettingsView: View {
                         }
                     } header: {
                         Text("Profile")
+                    }
+                    .listRowBackground(Color.tapeCardBg)
+
+                    // Safety
+                    Section {
+                        NavigationLink {
+                            BlockedUsersView()
+                        } label: {
+                            Label("Blocked Users", systemImage: "hand.raised")
+                                .foregroundStyle(.white)
+                        }
+                    } header: {
+                        Text("Safety")
+                    } footer: {
+                        Text("People you block can't message you and won't appear in your feed or search.")
                     }
                     .listRowBackground(Color.tapeCardBg)
 
@@ -129,7 +180,7 @@ struct SettingsView: View {
                     Section {
                         HStack {
                             Spacer()
-                            Text("Tape v1.0.0")
+                            Text(versionLabel)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
@@ -151,11 +202,19 @@ struct SettingsView: View {
             .alert("Delete Account?", isPresented: $showDeleteConfirm) {
                 Button("Cancel", role: .cancel) {}
                 Button("Delete", role: .destructive) {
-                    Task { await authVM.deleteAccount() }
+                    Task {
+                        // A failed deletion used to leave the user staring at
+                        // an unchanged screen with no idea it hadn't worked.
+                        if await authVM.deleteAccount() == false {
+                            deleteError = authVM.errorMessage
+                                ?? "We couldn't delete your account. Please try again."
+                        }
+                    }
                 }
             } message: {
                 Text("This permanently deletes your account and all of your data. This action cannot be undone.")
             }
+            .errorAlert($deleteError, title: "Couldn't Delete Account")
         }
     }
 }

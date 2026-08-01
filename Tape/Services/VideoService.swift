@@ -17,6 +17,10 @@ protocol VideoServiceProtocol {
     /// Records one play. Counted per play, not per unique viewer.
     func recordView(videoID: String) async throws
 
+    /// Single clip by id. Backs shared links, where all the recipient has is
+    /// the video id. Throws if the clip was deleted or its athlete is blocked.
+    func fetchVideo(id: String) async throws -> Video
+
     func fetchVideos(for athleteID: String) async throws -> [Video]
     func fetchVideos(for athleteID: String, category: VideoCategory) async throws -> [Video]
     func fetchFilteredVideos(filters: FeedFilters) async throws -> [Video]
@@ -81,6 +85,18 @@ final class MockVideoService: VideoServiceProtocol {
         if let i = videos.firstIndex(where: { $0.id == videoID }) {
             videos[i].viewCount += 1
         }
+    }
+
+    func fetchVideo(id: String) async throws -> Video {
+        try await Task.sleep(for: .milliseconds(120))
+        guard let video = videos.first(where: { $0.id == id }) else {
+            throw NSError(
+                domain: "MockVideoService",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Video not found"]
+            )
+        }
+        return video
     }
 
     func fetchVideos(for athleteID: String) async throws -> [Video] {

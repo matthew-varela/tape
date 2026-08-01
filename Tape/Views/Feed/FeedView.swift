@@ -1,4 +1,6 @@
+import AVFoundation
 import Combine
+import Kingfisher
 import SwiftUI
 
 /// `FeedView` is the vertical-paging video feed (TikTok-style). Everyone gets
@@ -18,20 +20,38 @@ struct FeedView: View {
         followService: APIFollowService()
     )
     @State private var playerManager = VideoPlayerManager()
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     /// The clip the scroll view is currently settled on. Source of truth for
     /// which player is allowed to run.
     @State private var visibleVideoID: String?
     @State private var showFilters = false
     @State private var showPaywall = false
     @State private var navigateToProfile: String?
-    @State private var showShareSheet = false
-    @State private var shareURL: URL?
+    /// Clip whose share sheet is open, if any.
+    @State private var shareTargetVideo: Video?
+    /// Deferred neighbour warming, cancelled and rescheduled on every swipe.
+    @State private var warmupTask: Task<Void, Never>?
+    /// True while the feed is being dragged or is still decelerating.
+    @State private var isScrolling = false
+    /// Clip to start once the scroll comes to rest.
+    @State private var pendingActivationID: String?
 
     // Moderation
     private let moderationService = APIModerationService()
     @State private var reportTargetVideo: Video?
     @State private var blockTargetVideo: Video?
     @State private var showReportConfirmation = false
+
+    /// How many clips on *either side* of the one being watched stay warmed
+    /// (each buffered to `VideoPlayerManager.previewBufferSeconds`) so
+    /// scrolling several clips in a row quickly — up or down — still has
+    /// something ready to play instead of going black while it reloads.
+    ///
+    /// Kept deliberately modest: this is a radius, so the real cost is
+    /// `2 * radius + 1` live players. iOS starts starving video decode
+    /// pipelines somewhere around 16 simultaneous ones, and crowding that
+    /// ceiling stalls the whole feed rather than just one clip.
+    private static let prefetchRadius = 4
 
     /// Recruiters and brands get the extra filtered-search stream; athletes
     /// only ever see the two social streams.
@@ -102,10 +122,8 @@ struct FeedView: View {
             .navigationDestination(item: $navigateToProfile) { athleteID in
                 AthleteProfileView(athleteID: athleteID, currentUser: currentUser)
             }
-            .sheet(isPresented: $showShareSheet) {
-                if let url = shareURL {
-                    ShareSheet(activityItems: [url])
-                }
+            .sheet(item: $shareTargetVideo) { video in
+                VideoShareSheet(video: video)
             }
             .sheet(isPresented: $showPaywall) {
                 ProPaywallSheet(userRole: currentUser.role)
@@ -147,6 +165,9 @@ struct FeedView: View {
             } message: {
                 Text("Our team will review this content.")
             }
+            // The feed ignores the safe area, so the banner needs to clear the
+            // overlay's action rail and the tab bar on its own.
+            .errorToast($feedVM.errorMessage, bottomPadding: 110)
         }
     }
 
@@ -226,7 +247,7 @@ struct FeedView: View {
         HStack(spacing: 0) {
             ForEach(availableModes, id: \.self) { mode in
                 Button {
-                    if mode == .search && currentUser.tier == .free {
+                    if mode == .search && !subscriptionManager.hasPro(currentUser) {
                         // Filtered search is a Pro feature for recruiters/brands.
                         // Don't switch into it; show the paywall instead.
                         showPaywall = true
@@ -273,9 +294,24 @@ struct FeedView: View {
         .scrollPosition(id: $visibleVideoID)
         .ignoresSafeArea()
         .refreshable { await feedVM.refresh() }
+        .modifier(ScrollPhaseReporter { scrolling in
+            isScrolling = scrolling
+            // Scroll came to rest — start whatever clip we ended up on.
+            if !scrolling, let pending = pendingActivationID {
+                pendingActivationID = nil
+                activate(videoID: pending)
+            }
+        })
         .onChange(of: visibleVideoID) { _, newID in
             guard let newID else { return }
-            activate(videoID: newID)
+            // Starting playback mid-scroll makes the decoder spin up while the
+            // paging animation is still running, which is what the swipe felt
+            // like it was catching on. Defer to the moment the scroll rests.
+            if isScrolling {
+                pendingActivationID = newID
+            } else {
+                activate(videoID: newID)
+            }
         }
     }
 
@@ -288,13 +324,7 @@ struct FeedView: View {
         guard let index = videos.firstIndex(where: { $0.id == videoID }) else { return }
         feedVM.currentIndex = index
 
-        Task { await feedVM.recordView(videos[index]) }
-
-        // Warm the next clip so it isn't buffering when it's scrolled to.
-        if index + 1 < videos.count {
-            playerManager.prepare(videos[index + 1])
-        }
-        playerManager.cleanup(keepingIDs: nearbyVideoIDs(around: index))
+        scheduleWarmup(around: index, in: videos)
 
         // Prefetch well before the end so scrolling never stalls.
         if index >= videos.count - 3 {
@@ -302,19 +332,59 @@ struct FeedView: View {
         }
     }
 
+    /// Warms clips on both sides so scrolling fast — up or down — still has
+    /// something to play immediately, even if only the first few seconds are
+    /// buffered.
+    ///
+    /// Building and tearing down `AVPlayer`s costs real main-thread time, and
+    /// doing it inline with the scroll settling is what made every swipe feel
+    /// like it caught for a moment. The work is pushed past the settle frame
+    /// and yields between each clip so the run loop keeps drawing. A new swipe
+    /// cancels the previous pass, so flicking through many clips does the
+    /// warming once at the end instead of once per clip passed.
+    private func scheduleWarmup(around index: Int, in videos: [Video]) {
+        warmupTask?.cancel()
+        warmupTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+
+            // Counting the view bumps the clip's count in the feed array,
+            // which invalidates every cell in the `ForEach`. Worth doing, but
+            // not while the viewer is still moving.
+            await feedVM.recordView(videos[index])
+            guard !Task.isCancelled else { return }
+
+            for video in warmupOrder(around: index, in: videos) {
+                guard !Task.isCancelled else { return }
+                playerManager.prepare(video)
+                await Task.yield()
+            }
+
+            guard !Task.isCancelled else { return }
+            playerManager.cleanup(keepingIDs: nearbyVideoIDs(around: index))
+        }
+    }
+
+    /// Nearest clips first, and the one below before the one above: the next
+    /// swipe is far more likely to continue down the feed than to double back.
+    private func warmupOrder(around index: Int, in videos: [Video]) -> [Video] {
+        var ordered: [Video] = []
+        for offset in 1...Self.prefetchRadius {
+            if index + offset < videos.count {
+                ordered.append(videos[index + offset])
+            }
+            if index - offset >= 0 {
+                ordered.append(videos[index - offset])
+            }
+        }
+        return ordered
+    }
+
     private func feedCell(video: Video) -> some View {
         ZStack {
-            VideoPlayerView(player: playerManager.player(for: video))
+            VideoStage(video: video, player: playerManager.player(for: video))
 
-            // Paused indicator, shown only for the clip the viewer paused.
-            if playerManager.isPaused && playerManager.activeVideoID == video.id {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .shadow(radius: 8)
-                    .allowsHitTesting(false)
-                    .transition(.opacity)
-            }
+            PausedIndicator(playerManager: playerManager, videoID: video.id)
 
             VideoOverlayView(
                 video: video,
@@ -339,8 +409,7 @@ struct FeedView: View {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 },
                 onShareTap: {
-                    shareURL = URL(string: "tape://video/\(video.id)")
-                    showShareSheet = true
+                    shareTargetVideo = video
                 },
                 onMuteTap: {
                     playerManager.toggleMute()
@@ -363,10 +432,89 @@ struct FeedView: View {
     private func nearbyVideoIDs(around index: Int) -> Set<String> {
         let videos = feedVM.displayedVideos
         guard !videos.isEmpty else { return [] }
-        let lower = max(0, index - 1)
-        let upper = min(videos.count - 1, index + 2)
+        let lower = max(0, index - Self.prefetchRadius)
+        let upper = min(videos.count - 1, index + Self.prefetchRadius)
         guard lower <= upper else { return [] }
         return Set((lower...upper).map { videos[$0].id })
+    }
+}
+
+/// The video layer plus the poster frame shown until it can draw.
+///
+/// The poster exists so a clip that hasn't buffered yet shows something rather
+/// than a black rectangle, but it can't simply be swapped for the video: the
+/// stills are generated from the *middle* of a clip while playback starts at
+/// zero, so the two images never match. Holding the poster until the layer
+/// reports `isReadyForDisplay` and then cross-fading turns what was a visible
+/// jump into a soft transition.
+///
+/// The poster is layered as an `overlay` on a plain color rather than placed
+/// directly in the `ZStack`. A `scaledToFill` image reports its full source
+/// dimensions as its ideal size, which would grow the stack past the screen
+/// and drag the cell's controls off with it. The color takes whatever size the
+/// cell proposes; the image is clipped to that.
+private struct VideoStage: View {
+    let video: Video
+    let player: AVPlayer
+
+    @State private var isReadyForDisplay = false
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .overlay {
+                    if let urlString = video.thumbnailURL, let url = URL(string: urlString) {
+                        KFImage(url)
+                            .resizable()
+                            .scaledToFill()
+                    }
+                }
+                .clipped()
+                .opacity(isReadyForDisplay ? 0 : 1)
+                .allowsHitTesting(false)
+
+            VideoPlayerView(player: player) {
+                guard !isReadyForDisplay else { return }
+                withAnimation(.easeOut(duration: 0.2)) { isReadyForDisplay = true }
+            }
+        }
+    }
+}
+
+/// Reads the manager directly so the enclosing cell doesn't depend on
+/// `activeVideoID`. When the cell itself read it, every live cell — overlay
+/// chrome, tag row, avatar and all — was invalidated on every single swipe.
+private struct PausedIndicator: View {
+    let playerManager: VideoPlayerManager
+    let videoID: String
+
+    var body: some View {
+        if playerManager.isPaused && playerManager.activeVideoID == videoID {
+            Image(systemName: "play.fill")
+                .font(.system(size: 60))
+                .foregroundStyle(.white.opacity(0.75))
+                .shadow(radius: 8)
+                .allowsHitTesting(false)
+                .transition(.opacity)
+        }
+    }
+}
+
+/// Bridges iOS 18's scroll-phase reporting so the feed can hold playback until
+/// the scroll actually comes to rest. On iOS 17 there's no public way to
+/// observe deceleration, so the feed keeps its previous behaviour and starts
+/// the clip as soon as the scroll position changes.
+private struct ScrollPhaseReporter: ViewModifier {
+    let onScrollingChange: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollPhaseChange { _, phase in
+                onScrollingChange(phase != .idle)
+            }
+        } else {
+            content
+        }
     }
 }
 

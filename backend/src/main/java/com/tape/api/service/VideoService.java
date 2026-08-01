@@ -74,6 +74,22 @@ public class VideoService {
     }
 
     /**
+     * Single video by id. Backs shared links: a recipient opening
+     * {@code /video/{id}} needs the clip without knowing whose profile it is
+     * on. Videos hidden by a block in either direction are treated as missing
+     * rather than 403 so a shared link never reveals that a block exists.
+     */
+    public Video getVideo(String videoId, String callerUid) {
+        Video video = videoRepo.findById(videoId)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found"));
+
+        if (moderationService.getHiddenUserIds(callerUid).contains(video.getAthlete().getId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Video not found");
+        }
+        return video;
+    }
+
+    /**
      * Returns an athlete's videos sorted pinned-first, then newest.
      * This matches the iOS ProfileViewModel local sort order so both clients
      * see the same ordering without client-side re-sorting.

@@ -186,6 +186,17 @@ same person watching a clip 100 times is 100 views, including the athlete
 watching their own clip. Clients call this every time a clip becomes the active
 one in the feed. Returns `204 No Content`.
 
+### `GET /api/videos/{id}`
+
+A single clip by id. Backs shared links (`https://watchtape.app/video/{id}`),
+where the recipient has a video id but not the athlete it belongs to.
+
+Returns `404` both when the clip doesn't exist and when its athlete is blocked
+in either direction — deliberately indistinguishable, so a shared link can't be
+used to probe whether someone has blocked you.
+
+Response: `Video`
+
 ### `GET /api/videos?athleteId={id}&category=TAPE|CULTURE`
 
 Lists an athlete's videos sorted pinned-first, then newest-first.
@@ -402,6 +413,15 @@ All messages in a conversation, oldest → newest.
 Caller must be a participant.
 
 Response: `[Message]`.
+
+### `POST /api/conversations/{id}/read`
+
+Marks the **other** participant's messages in this thread as read. Called when
+the caller opens the thread. The caller's own messages are never touched, so a
+sender can't manufacture a read receipt for themselves.
+
+Idempotent. Caller must be a participant (`403` otherwise). Returns
+`204 No Content`.
 
 ### `POST /api/conversations/{id}/messages`
 

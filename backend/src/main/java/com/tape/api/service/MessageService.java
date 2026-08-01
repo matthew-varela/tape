@@ -82,6 +82,22 @@ public class MessageService {
     }
 
     /**
+     * Marks the other participant's messages in this thread as read.
+     *
+     * Called when the caller opens the thread. Without this, `isRead` stayed
+     * false forever, so the read receipts shown to Pro users never appeared
+     * and the inbox unread badge never cleared.
+     *
+     * @return how many messages changed state
+     */
+    @Transactional
+    public int markRead(String conversationId, String callerUid) {
+        Conversation conv = getConversation(conversationId);
+        requireParticipant(conv, callerUid);
+        return messageRepo.markReadByReader(conversationId, callerUid);
+    }
+
+    /**
      * Sends a message from the authenticated caller.
      *
      * The {@code senderId} body field is accepted for backward compatibility

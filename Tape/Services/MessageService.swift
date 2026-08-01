@@ -14,6 +14,10 @@ protocol MessageServiceProtocol {
     /// All messages in a single conversation, oldest → newest.
     func fetchMessages(for conversationID: String) async throws -> [Message]
 
+    /// Marks the other participant's messages in a thread as read. Called when
+    /// the thread is opened. Idempotent.
+    func markRead(conversationID: String) async throws
+
     /// Persists a new message and returns the saved record (with the
     /// server-issued ID and timestamp).
     func sendMessage(conversationID: String, senderID: String, text: String) async throws -> Message
@@ -41,6 +45,13 @@ final class MockMessageService: MessageServiceProtocol {
         return messages
             .filter { $0.conversationID == conversationID }
             .sorted { $0.sentAt < $1.sentAt }
+    }
+
+    func markRead(conversationID: String) async throws {
+        try await Task.sleep(for: .milliseconds(80))
+        for index in messages.indices where messages[index].conversationID == conversationID {
+            messages[index].isRead = true
+        }
     }
 
     func sendMessage(conversationID: String, senderID: String, text: String) async throws -> Message {

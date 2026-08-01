@@ -51,6 +51,20 @@ public class VideoController {
         return videos.stream().map(videoService::toFeedResponse).toList();
     }
 
+    /**
+     * Single video by id. Backs shared links (`/video/{id}`), where the
+     * recipient has the clip id but not the athlete it belongs to.
+     *
+     * Declared after the literal `/feed` and `/search` mappings for
+     * readability only — Spring always prefers a literal path over a path
+     * variable, so ordering here does not affect matching.
+     */
+    @GetMapping("/{id}")
+    public VideoFeedResponse getVideo(@PathVariable String id) {
+        String uid = SecurityUtils.requireFirebaseUid();
+        return videoService.toFeedResponse(videoService.getVideo(id, uid));
+    }
+
     @GetMapping("/search")
     public List<VideoFeedResponse> searchVideos(
             @RequestParam(required = false) String position,

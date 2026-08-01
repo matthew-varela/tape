@@ -87,8 +87,13 @@ final class ScoutingViewModel {
     // MARK: - Athlete resolution
 
     /// Resolves the athlete IDs on a board (or across all boards) into full
-    /// `User` records. We fetch every athlete in one round trip for now;
-    /// when we get a `/api/users?ids=...` endpoint we should switch to that.
+    /// `User` records.
+    ///
+    /// Each ID is fetched directly rather than pulling the whole athlete
+    /// directory and filtering it locally. The old approach silently dropped
+    /// anyone the directory endpoint didn't happen to return — which becomes
+    /// wrong the moment that list is paginated or capped — and it downloaded
+    /// every athlete on the platform to display a handful.
     func loadBookmarkedAthletes(for boardID: String? = nil) async {
         let athleteIDs: [String]
         if let boardID, let board = boards.first(where: { $0.id == boardID }) {
@@ -101,12 +106,23 @@ final class ScoutingViewModel {
             return
         }
 
-        do {
-            let allAthletes = try await profileService.fetchAthletes()
-            bookmarkedAthletes = allAthletes.filter { athleteIDs.contains($0.id) }
-        } catch {
-            errorMessage = error.localizedDescription
+        // Board order is meaningless to the user, so present alphabetically.
+        // A profile that fails to resolve (deleted account) is skipped rather
+        // than failing the whole board.
+        let resolved = await withTaskGroup(of: User?.self) { group in
+            for id in athleteIDs {
+                group.addTask { [profileService] in
+                    try? await profileService.fetchAthlete(id: id)
+                }
+            }
+            var found: [User] = []
+            for await athlete in group {
+                if let athlete { found.append(athlete) }
+            }
+            return found
         }
+
+        bookmarkedAthletes = resolved.sorted { $0.displayName < $1.displayName }
     }
 
     // MARK: - Helpers

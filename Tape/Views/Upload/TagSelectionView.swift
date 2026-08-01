@@ -11,6 +11,9 @@ import SwiftUI
 struct TagSelectionView: View {
     @Bindable var uploadVM: UploadViewModel
     let onPublish: () -> Void
+    /// The uploader's sport, used to narrow the position and play-type chips
+    /// to ones that make sense for them. `nil` shows everything.
+    var sport: String?
 
     var body: some View {
         ZStack {
@@ -66,7 +69,11 @@ struct TagSelectionView: View {
 
     private var tagsSection: some View {
         ForEach(VideoTag.TagCategory.allCases, id: \.self) { category in
-            let tags = MockData.availableTags.filter { $0.category == category }
+            // Sport chips are always the full list — that's the field the
+            // narrowing is based on.
+            let tags = category == .sport
+                ? TagCatalog.tags(in: category)
+                : TagCatalog.tags(in: category, sport: sport)
             VStack(alignment: .leading, spacing: 10) {
                 Text(category.rawValue.capitalized)
                     .font(.headline)

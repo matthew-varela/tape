@@ -35,11 +35,47 @@ struct ContentView: View {
 /// tab (for example athletes can't open recruiter-only filters in Search); the
 /// one exception is Upload, which is hidden entirely for recruiters and brands
 /// rather than shown as a tab that only ever explains itself.
+///
+/// Shared clip links are presented here rather than inside a tab so the deep
+/// link works regardless of which tab is showing.
 struct MainTabView: View {
     let currentUser: User
     @Environment(AuthViewModel.self) private var authVM
+    @Environment(DeepLinkRouter.self) private var deepLinkRouter
 
     var body: some View {
+        @Bindable var router = deepLinkRouter
+
+        tabs
+            .fullScreenCover(item: $router.presentedVideo) { video in
+                FullScreenVideoPlayer(video: video)
+            }
+            .overlay {
+                if router.isResolving {
+                    ZStack {
+                        Color.black.opacity(0.4).ignoresSafeArea()
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(.white)
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.2), value: router.isResolving)
+            .alert(
+                "Can't open that link",
+                isPresented: Binding(
+                    get: { router.errorMessage != nil },
+                    set: { if !$0 { router.errorMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(router.errorMessage ?? "")
+            }
+    }
+
+    private var tabs: some View {
         TabView {
             FeedView(currentUser: currentUser)
                 .tabItem { Label("Feed", systemImage: "house.fill") }

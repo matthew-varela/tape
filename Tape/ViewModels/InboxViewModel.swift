@@ -58,6 +58,23 @@ final class InboxViewModel {
         }
     }
 
+    /// Marks the other participant's messages as read and clears this thread's
+    /// unread badge locally so the inbox updates without waiting for the next
+    /// poll.
+    ///
+    /// Failures are swallowed: not clearing a badge is a cosmetic problem, and
+    /// an error banner for it would be noise on a screen the user just opened.
+    func markRead(conversationID: String) async {
+        do {
+            try await messageService.markRead(conversationID: conversationID)
+            if let idx = conversations.firstIndex(where: { $0.id == conversationID }) {
+                conversations[idx].unreadCount = 0
+            }
+        } catch {
+            // Non-fatal.
+        }
+    }
+
     // MARK: - Polling
 
     /// Begins refetching the user's conversations every `pollInterval`. Idempotent
@@ -147,11 +164,20 @@ final class InboxViewModel {
         }
     }
 
-    func canInitiateMessage(currentUser: User) -> Bool {
+    /// Whether `currentUser` may start a new thread right now.
+    ///
+    /// `hasPro` is passed in rather than read off `currentUser.tier` because
+    /// the backend tier can trail a just-completed StoreKit purchase. The
+    /// caller resolves both sources via `SubscriptionManager.hasPro(_:)`.
+    func canInitiateMessage(currentUser: User, hasPro: Bool) -> Bool {
         guard currentUser.role == .recruiter || currentUser.role == .brand else { return false }
-        if currentUser.tier == .free && currentUser.dmsSentThisMonth >= 10 { return false }
+        if !hasPro && currentUser.dmsSentThisMonth >= Self.freeDMMonthlyCap { return false }
         return true
     }
+
+    /// Mirrors the server-side cap in `MessageService.FREE_DM_MONTHLY_CAP`.
+    /// Checked locally only so the user sees a paywall instead of a 403.
+    static let freeDMMonthlyCap = 10
 
     // MARK: - Private merges
 

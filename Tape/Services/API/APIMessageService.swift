@@ -8,6 +8,7 @@ import Foundation
 ///   - `GET    /api/conversations?userId={id}`
 ///   - `GET    /api/conversations/{id}/messages`
 ///   - `POST   /api/conversations/{id}/messages`
+///   - `POST   /api/conversations/{id}/read`
 ///   - `POST   /api/conversations`
 final class APIMessageService: MessageServiceProtocol {
     private let client = APIClient.shared
@@ -18,6 +19,11 @@ final class APIMessageService: MessageServiceProtocol {
 
     func fetchMessages(for conversationID: String) async throws -> [Message] {
         try await client.get("/api/conversations/\(conversationID)/messages")
+    }
+
+    func markRead(conversationID: String) async throws {
+        struct Empty: Encodable {}
+        try await client.postVoid("/api/conversations/\(conversationID)/read", body: Empty())
     }
 
     func sendMessage(conversationID: String, senderID: String, text: String) async throws -> Message {

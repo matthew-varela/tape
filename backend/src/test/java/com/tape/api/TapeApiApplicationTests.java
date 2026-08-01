@@ -332,6 +332,106 @@ class TapeApiApplicationTests {
             .andExpect(jsonPath("$.message").exists());
     }
 
+    // ── Conversation read receipts ────────────────────────────────────────────
+
+    @Test
+    void markRead_flipsOnlyTheOtherParticipantsMessages() throws Exception {
+        String convId = startConversation(UID_RECRUITER, UID_ATHLETE);
+
+        mvc.perform(post("/api/conversations/" + convId + "/messages")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("text", "Saw your tape"))))
+            .andExpect(status().isCreated());
+
+        // The sender marking the thread read must not mark their own message
+        // read — that would show them a receipt nobody earned.
+        mvc.perform(post("/api/conversations/" + convId + "/read")
+                .header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isNoContent());
+        mvc.perform(get("/api/conversations/" + convId + "/messages")
+                .header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].isRead").value(false));
+
+        // The recipient opening the thread does mark it read.
+        mvc.perform(post("/api/conversations/" + convId + "/read")
+                .header("X-Test-User-ID", UID_ATHLETE))
+            .andExpect(status().isNoContent());
+        mvc.perform(get("/api/conversations/" + convId + "/messages")
+                .header("X-Test-User-ID", UID_ATHLETE))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].isRead").value(true));
+    }
+
+    @Test
+    void markRead_403_forNonParticipant() throws Exception {
+        String convId = startConversation(UID_RECRUITER, UID_ATHLETE);
+
+        mvc.perform(post("/api/conversations/" + convId + "/read")
+                .header("X-Test-User-ID", UID_FREE_REC))
+            .andExpect(status().isForbidden());
+    }
+
+    // ── Single video lookup (shared links) ────────────────────────────────────
+
+    @Test
+    void getVideoById_returnsClipForAnyAuthenticatedCaller() throws Exception {
+        String videoId = publishVideo(UID_ATHLETE);
+
+        mvc.perform(get("/api/videos/" + videoId).header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(videoId))
+            .andExpect(jsonPath("$.athleteId").value(UID_ATHLETE));
+    }
+
+    @Test
+    void getVideoById_404_whenAthleteIsBlocked() throws Exception {
+        String videoId = publishVideo(UID_ATHLETE);
+
+        mvc.perform(post("/api/blocks")
+                .header("X-Test-User-ID", UID_RECRUITER)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("userId", UID_ATHLETE))))
+            .andExpect(status().isNoContent());
+
+        // 404 rather than 403 so a shared link can't be used to probe whether
+        // someone has blocked you.
+        mvc.perform(get("/api/videos/" + videoId).header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void getVideoById_404_whenMissing() throws Exception {
+        mvc.perform(get("/api/videos/does-not-exist").header("X-Test-User-ID", UID_RECRUITER))
+            .andExpect(status().isNotFound());
+    }
+
+    /** Creates a thread and returns its id. */
+    private String startConversation(String initiatorUid, String recipientUid) throws Exception {
+        String json = mvc.perform(post("/api/conversations")
+                .header("X-Test-User-ID", initiatorUid)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("recipientId", recipientUid))))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        return mapper.readTree(json).get("id").asText();
+    }
+
+    /** Publishes a clip as the given athlete and returns its id. */
+    private String publishVideo(String athleteUid) throws Exception {
+        String json = mvc.perform(post("/api/videos")
+                .header("X-Test-User-ID", athleteUid)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of(
+                    "videoUrl", "https://example.com/v.mp4",
+                    "category", "TAPE"
+                ))))
+            .andExpect(status().isCreated())
+            .andReturn().getResponse().getContentAsString();
+        return mapper.readTree(json).get("id").asText();
+    }
+
     // ── Moderation: report + block ────────────────────────────────────────────
 
     @Test

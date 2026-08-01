@@ -246,30 +246,7 @@ struct MockData {
 
     // MARK: - Tags
 
-    static let availableTags: [VideoTag] = [
-        VideoTag(id: "tag-fb", label: "Football", category: .sport),
-        VideoTag(id: "tag-bb", label: "Basketball", category: .sport),
-        VideoTag(id: "tag-bs", label: "Baseball", category: .sport),
-        VideoTag(id: "tag-sc", label: "Soccer", category: .sport),
-        VideoTag(id: "tag-tk", label: "Track & Field", category: .sport),
-
-        VideoTag(id: "tag-qb", label: "QB", category: .position),
-        VideoTag(id: "tag-wr", label: "WR", category: .position),
-        VideoTag(id: "tag-rb", label: "RB", category: .position),
-        VideoTag(id: "tag-te", label: "TE", category: .position),
-        VideoTag(id: "tag-ol", label: "OL", category: .position),
-        VideoTag(id: "tag-dl", label: "DL", category: .position),
-        VideoTag(id: "tag-lb", label: "LB", category: .position),
-        VideoTag(id: "tag-cb", label: "CB", category: .position),
-        VideoTag(id: "tag-s", label: "S", category: .position),
-        VideoTag(id: "tag-pg", label: "PG", category: .position),
-
-        VideoTag(id: "tag-dp", label: "Deep Pass", category: .playType),
-        VideoTag(id: "tag-rtd", label: "Rushing TD", category: .playType),
-        VideoTag(id: "tag-p6", label: "Pick Six", category: .playType),
-        VideoTag(id: "tag-sk", label: "Sack", category: .playType),
-        VideoTag(id: "tag-sp", label: "Screen Pass", category: .playType),
-        VideoTag(id: "tag-int", label: "Interception", category: .playType),
-        VideoTag(id: "tag-dunk", label: "Dunk", category: .playType),
-    ]
+    /// Kept as an alias so preview code has one name to reach for. The real
+    /// list lives in `TagCatalog`, which the upload flow reads directly.
+    static var availableTags: [VideoTag] { TagCatalog.all }
 }

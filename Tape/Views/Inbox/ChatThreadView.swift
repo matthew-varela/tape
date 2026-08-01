@@ -11,6 +11,7 @@ struct ChatThreadView: View {
     let conversation: Conversation
     let currentUser: User
     @Environment(AuthViewModel.self) private var authVM
+    @Environment(SubscriptionManager.self) private var subscriptionManager
     @Environment(\.dismiss) private var dismiss
     @State private var inboxVM = InboxViewModel(messageService: APIMessageService())
     @State private var messageText = ""
@@ -93,7 +94,16 @@ struct ChatThreadView: View {
         }
         .task {
             await inboxVM.loadMessages(conversationID: conversation.id)
+            // Opening the thread is what counts as reading it. Doing this
+            // after the first load means the receipt reflects messages the
+            // user can actually see.
+            await inboxVM.markRead(conversationID: conversation.id)
             inboxVM.startMessagePolling(conversationID: conversation.id)
+        }
+        .onChange(of: inboxVM.currentMessages.count) { _, _ in
+            // A message that arrives while the thread is open has also been
+            // read, so keep the other side's receipts current.
+            Task { await inboxVM.markRead(conversationID: conversation.id) }
         }
         .onDisappear {
             inboxVM.stopPolling()
@@ -121,6 +131,7 @@ struct ChatThreadView: View {
         } message: {
             Text("Our team will review this conversation.")
         }
+        .errorToast($inboxVM.errorMessage, bottomPadding: 80)
     }
 
     // MARK: - Moderation actions
@@ -163,7 +174,7 @@ struct ChatThreadView: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
 
-                    if isFromMe && currentUser.tier == .pro && message.isRead {
+                    if isFromMe && subscriptionManager.hasPro(currentUser) && message.isRead {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.caption2)
                             .foregroundStyle(Color.tapeRed)
@@ -207,7 +218,9 @@ struct ChatThreadView: View {
         // just a faster local check so the user gets the paywall instead of
         // a 403 from the API.
         let isPaidRole = currentUser.role == .recruiter || currentUser.role == .brand
-        if isPaidRole, currentUser.tier == .free, currentUser.dmsSentThisMonth >= 10 {
+        if isPaidRole,
+           !subscriptionManager.hasPro(currentUser),
+           currentUser.dmsSentThisMonth >= InboxViewModel.freeDMMonthlyCap {
             showPaywall = true
             return
         }
