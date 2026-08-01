@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["REPLACE_WITH_TEAM_ID.com.tape.app"],
+        "components": [
+          {
+            "/": "/video/*",
+            "comment": "Shared video links open the clip in the Tape app."
+          }
+        ]
+      }
+    ]
+  }
+}
