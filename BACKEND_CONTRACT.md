@@ -541,9 +541,15 @@ Response:
   "organization": "string?",
   "title": "string?",
   "schoolId": "string?",
+  "instagramHandle": "string?",
+  "tiktokHandle": "string?",
   "dmsSentThisMonth": 0
 }
 ```
+
+`instagramHandle` / `tiktokHandle` are bare usernames (no leading `@`). Empty
+string on update clears the field; omit / null leaves it unchanged. Clients
+hide the corresponding profile icon when the value is null or blank.
 
 `targetSchoolIds` (athletes) is a **ranked** list — index 0 is the athlete's top
 choice. `schoolId` (recruiters) is the program they coach for. Both hold ids

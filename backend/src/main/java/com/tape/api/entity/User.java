@@ -73,6 +73,14 @@ public class User {
     @Column(length = 16)
     private String schoolId;
 
+    /** Instagram username without leading @. Null/blank hides the profile icon. */
+    @Column(length = 64)
+    private String instagramHandle;
+
+    /** TikTok username without leading @. Null/blank hides the profile icon. */
+    @Column(length = 64)
+    private String tiktokHandle;
+
     private int dmsSentThisMonth;
 
     @Column(nullable = false, updatable = false)
@@ -159,6 +167,12 @@ public class User {
 
     public String getSchoolId() { return schoolId; }
     public void setSchoolId(String schoolId) { this.schoolId = schoolId; }
+
+    public String getInstagramHandle() { return instagramHandle; }
+    public void setInstagramHandle(String instagramHandle) { this.instagramHandle = instagramHandle; }
+
+    public String getTiktokHandle() { return tiktokHandle; }
+    public void setTiktokHandle(String tiktokHandle) { this.tiktokHandle = tiktokHandle; }
 
     public int getDmsSentThisMonth() { return dmsSentThisMonth; }
     public void setDmsSentThisMonth(int dmsSentThisMonth) { this.dmsSentThisMonth = dmsSentThisMonth; }

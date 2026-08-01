@@ -28,6 +28,8 @@ struct EditProfileView: View {
     @State private var gpa = ""
     /// Coaching role at the program — "Head Coach", "Recruiting Coordinator".
     @State private var coachPosition = ""
+    @State private var instagramHandle = ""
+    @State private var tiktokHandle = ""
 
     @State private var targetSchoolIDs: [String] = []
     /// Single-id list for the coach's school so it shares `SchoolPickerView`.
@@ -70,6 +72,8 @@ struct EditProfileView: View {
                     } else {
                         coachBrandFields
                     }
+
+                    socialFields
 
                     if let errorMessage {
                         Text(errorMessage)
@@ -126,6 +130,16 @@ struct EditProfileView: View {
         formField("GPA", text: $gpa)
             .keyboardType(.decimalPad)
         topSchoolsField
+    }
+
+    @ViewBuilder
+    private var socialFields: some View {
+        formField("Instagram (@username)", text: $instagramHandle)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        formField("TikTok (@username)", text: $tiktokHandle)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
     }
 
     @ViewBuilder
@@ -297,6 +311,8 @@ struct EditProfileView: View {
         fortyYardDash = user.fortyYardDash ?? ""
         gpa = user.gpa.map { String(format: "%.1f", $0) } ?? ""
         coachPosition = user.title ?? ""
+        instagramHandle = user.instagramHandle.map { SocialHandle.normalize($0) } ?? ""
+        tiktokHandle = user.tiktokHandle.map { SocialHandle.normalize($0) } ?? ""
         targetSchoolIDs = user.targetSchoolIDs
         coachSchoolIDs = [user.schoolId].compactMap { $0 }
         profileImageURL = user.profileImageURL
@@ -348,6 +364,14 @@ struct EditProfileView: View {
                 user.title = nilIfEmpty(coachPosition) ?? ""
                 user.organization = SchoolCatalog.school(id: schoolID)?.name ?? ""
             }
+
+            // Empty string clears a handle; nil would leave the old value alone.
+            user.instagramHandle = SocialHandle.normalize(instagramHandle).isEmpty
+                ? ""
+                : SocialHandle.normalize(instagramHandle)
+            user.tiktokHandle = SocialHandle.normalize(tiktokHandle).isEmpty
+                ? ""
+                : SocialHandle.normalize(tiktokHandle)
 
             try await profileService.updateProfile(user)
             await authVM.refreshCurrentUser()

@@ -132,6 +132,12 @@ struct User: Codable, Identifiable, Hashable {
     /// `School.id` of the program a recruiter coaches for.
     var schoolId: String?
 
+    /// Instagram username (no leading @). Nil/empty hides the profile icon.
+    var instagramHandle: String?
+
+    /// TikTok username (no leading @). Nil/empty hides the profile icon.
+    var tiktokHandle: String?
+
     // Analytics (frontend-only convenience; backend may overwrite on /me).
     var profileViewsThisWeek: Int
     var profileViewerIDs: [String]
@@ -148,6 +154,7 @@ struct User: Codable, Identifiable, Hashable {
         case height, weight, fortyYardDash, gpa
         case targetSchoolIDs = "targetSchoolIds"
         case organization, title, schoolId
+        case instagramHandle, tiktokHandle
         case profileViewsThisWeek, profileViewerIDs
         case dmsSentThisMonth
     }
@@ -174,6 +181,8 @@ struct User: Codable, Identifiable, Hashable {
         organization: String? = nil,
         title: String? = nil,
         schoolId: String? = nil,
+        instagramHandle: String? = nil,
+        tiktokHandle: String? = nil,
         profileViewsThisWeek: Int = 0,
         profileViewerIDs: [String] = [],
         dmsSentThisMonth: Int = 0
@@ -199,6 +208,8 @@ struct User: Codable, Identifiable, Hashable {
         self.organization = organization
         self.title = title
         self.schoolId = schoolId
+        self.instagramHandle = instagramHandle
+        self.tiktokHandle = tiktokHandle
         self.profileViewsThisWeek = profileViewsThisWeek
         self.profileViewerIDs = profileViewerIDs
         self.dmsSentThisMonth = dmsSentThisMonth
@@ -227,6 +238,8 @@ struct User: Codable, Identifiable, Hashable {
         organization = try c.decodeIfPresent(String.self, forKey: .organization)
         title = try c.decodeIfPresent(String.self, forKey: .title)
         schoolId = try c.decodeIfPresent(String.self, forKey: .schoolId)
+        instagramHandle = try c.decodeIfPresent(String.self, forKey: .instagramHandle)
+        tiktokHandle = try c.decodeIfPresent(String.self, forKey: .tiktokHandle)
         profileViewsThisWeek = try c.decodeIfPresent(Int.self, forKey: .profileViewsThisWeek) ?? 0
         profileViewerIDs = try c.decodeIfPresent([String].self, forKey: .profileViewerIDs) ?? []
         dmsSentThisMonth = try c.decodeIfPresent(Int.self, forKey: .dmsSentThisMonth) ?? 0

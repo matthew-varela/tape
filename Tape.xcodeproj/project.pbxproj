@@ -71,6 +71,7 @@
 		E494D2F7D747430C4DA5A664 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 177EFB324B1D2D036A81458A /* APIClient.swift */; };
 		E65005F3AAD0E66311DB3F58 /* VideoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C3704D71979B4E5C6013E89 /* VideoService.swift */; };
 		E951FF19FC1DA5A662F22CCB /* FollowService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A416957B05F4E745A5747C48 /* FollowService.swift */; };
+		EAD3CCBB2A38BA53EFBC940A /* SocialPlatformIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AAC7F9BB933DB9D405DA31B /* SocialPlatformIcon.swift */; };
 		F0199A1BE5668A62269C40EC /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 158FC93E448F3779664B595D /* Extensions.swift */; };
 		F3A16411EA851BCD6A120CE7 /* APIVideoService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23F4A57D8820DDE4711126EB /* APIVideoService.swift */; };
 		F3E3D877692DD8614ECFFCB4 /* SavedPlayersViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D934FAF5D875E7270140CBC /* SavedPlayersViewModel.swift */; };
@@ -106,6 +107,7 @@
 		3E827C730F767D5C3599771E /* BookmarkedAthleteCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookmarkedAthleteCard.swift; sourceTree = "<group>"; };
 		4040096C71807B4363961CA8 /* VideoTrimmerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoTrimmerView.swift; sourceTree = "<group>"; };
 		47415D06B04C4459392F7C0A /* APISavedAthleteService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APISavedAthleteService.swift; sourceTree = "<group>"; };
+		4AAC7F9BB933DB9D405DA31B /* SocialPlatformIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SocialPlatformIcon.swift; sourceTree = "<group>"; };
 		4D9EBD30F46CF939104ECA2E /* SchoolLogo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchoolLogo.swift; sourceTree = "<group>"; };
 		4DC42D77DBF3F50515B7C9F3 /* APIProfileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIProfileService.swift; sourceTree = "<group>"; };
 		5342219AB14FB850651956FB /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -227,6 +229,7 @@
 				91028ACFF1492E55D69107DF /* MediaGridView.swift */,
 				BC5A1DFC6306214091973413 /* SchoolPickerView.swift */,
 				1F77934CF87F64BF125E4A7D /* SchoolShowcase.swift */,
+				4AAC7F9BB933DB9D405DA31B /* SocialPlatformIcon.swift */,
 				D77F04A7C9CE717E41F1D524 /* VitalsDashboard.swift */,
 			);
 			path = Profile;
@@ -580,6 +583,7 @@
 				FE4CFCCBBA552E87777FBE30 /* SearchView.swift in Sources */,
 				DDAD3FD3A6A1D797D2D544E0 /* SettingsView.swift in Sources */,
 				39EFD8A00259DF5901874B92 /* SignUpView.swift in Sources */,
+				EAD3CCBB2A38BA53EFBC940A /* SocialPlatformIcon.swift in Sources */,
 				A8A1B82803885E0F27246357 /* StorageService.swift in Sources */,
 				BADA8073D155EBDCF373A975 /* SubscriptionManager.swift in Sources */,
 				31F6C7982C2F8476BAA6291D /* TagSelectionView.swift in Sources */,

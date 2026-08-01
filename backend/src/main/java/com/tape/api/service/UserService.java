@@ -207,6 +207,14 @@ public class UserService {
             String schoolId = updates.getSchoolId().isBlank() ? null : updates.getSchoolId();
             user.setSchoolId(schoolId);
         }
+        // Empty string clears the handle (clients send "" to remove a link).
+        // Null still means "leave unchanged".
+        if (updates.getInstagramHandle() != null) {
+            user.setInstagramHandle(normalizeSocialHandle(updates.getInstagramHandle()));
+        }
+        if (updates.getTiktokHandle() != null) {
+            user.setTiktokHandle(normalizeSocialHandle(updates.getTiktokHandle()));
+        }
         // An empty list is a meaningful value here (clear the shortlist), so
         // only a missing key skips the update.
         if (updates.getTargetSchoolIds() != null) {
@@ -214,6 +222,27 @@ public class UserService {
             user.getTargetSchoolIds().addAll(updates.getTargetSchoolIds());
         }
         return userRepo.save(user);
+    }
+
+    /**
+     * Strips whitespace, a leading {@code @}, and common profile URL prefixes
+     * so stored values are bare usernames. Blank input clears the field.
+     */
+    private static String normalizeSocialHandle(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String handle = raw.trim();
+        // Accept pasted profile URLs.
+        handle = handle.replaceFirst("(?i)^https?://(www\\.)?instagram\\.com/", "");
+        handle = handle.replaceFirst("(?i)^https?://(www\\.)?tiktok\\.com/", "");
+        handle = handle.replaceFirst("^/+", "");
+        if (handle.startsWith("@")) handle = handle.substring(1);
+        // Drop path/query leftovers from pasted URLs ("user/?hl=en").
+        int slash = handle.indexOf('/');
+        if (slash >= 0) handle = handle.substring(0, slash);
+        int query = handle.indexOf('?');
+        if (query >= 0) handle = handle.substring(0, query);
+        handle = handle.trim();
+        return handle.isEmpty() ? null : handle;
     }
 
     // ── Profile views ─────────────────────────────────────────────────────────

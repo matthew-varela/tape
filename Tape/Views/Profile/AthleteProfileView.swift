@@ -244,12 +244,14 @@ struct AthleteProfileView: View {
     // MARK: - Follow
 
     /// Follower/following counters plus the follow button. Counters are always
-    /// visible; the button only appears on other people's profiles.
+    /// visible; social icons appear only when that handle is set. The follow /
+    /// edit button only appears on the appropriate profile.
     private func followRow(_ athlete: User) -> some View {
         VStack(spacing: 16) {
-            HStack(spacing: 32) {
+            HStack(spacing: 28) {
                 countPill(value: profileVM.followCounts.followers, label: "Followers")
                 countPill(value: profileVM.followCounts.following, label: "Following")
+                socialLinkIcons(for: athlete)
             }
 
             if !isOwnProfile {
@@ -298,6 +300,30 @@ struct AthleteProfileView: View {
             }
         }
         .padding(.bottom, 20)
+    }
+
+    /// Instagram / TikTok icons — each only renders when that handle is present.
+    @ViewBuilder
+    private func socialLinkIcons(for athlete: User) -> some View {
+        let ig = SocialHandle.normalize(athlete.instagramHandle ?? "")
+        let tt = SocialHandle.normalize(athlete.tiktokHandle ?? "")
+
+        if !ig.isEmpty || !tt.isEmpty {
+            HStack(spacing: 12) {
+                if !ig.isEmpty, let url = SocialPlatform.instagram.profileURL(handle: ig) {
+                    Link(destination: url) {
+                        SocialPlatformIcon(platform: .instagram, size: 30)
+                    }
+                    .accessibilityLabel("Instagram")
+                }
+                if !tt.isEmpty, let url = SocialPlatform.tiktok.profileURL(handle: tt) {
+                    Link(destination: url) {
+                        SocialPlatformIcon(platform: .tiktok, size: 30)
+                    }
+                    .accessibilityLabel("TikTok")
+                }
+            }
+        }
     }
 
     private func countPill(value: Int, label: String) -> some View {
