@@ -543,11 +543,12 @@ Response:
   "schoolId": "string?",
   "instagramHandle": "string?",
   "tiktokHandle": "string?",
+  "snapchatHandle": "string?",
   "dmsSentThisMonth": 0
 }
 ```
 
-`instagramHandle` / `tiktokHandle` are bare usernames (no leading `@`). Empty
+`instagramHandle` / `tiktokHandle` / `snapchatHandle` are bare usernames (no leading `@`). Empty
 string on update clears the field; omit / null leaves it unchanged. Clients
 hide the corresponding profile icon when the value is null or blank.
 

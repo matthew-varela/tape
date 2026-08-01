@@ -11,7 +11,7 @@ struct MockData {
              highSchool: "Pioneer HS", gradYear: 2026, sport: "Football",
              position: "QB", state: "MI", height: "6'2\"", weight: "195",
              fortyYardDash: "4.65", gpa: 3.7,
-             instagramHandle: "johndoe.qb", tiktokHandle: "johndoeqb",
+             instagramHandle: "johndoe.qb", tiktokHandle: "johndoeqb", snapchatHandle: "johndoeqb",
              profileViewsThisWeek: 14, profileViewerIDs: ["rec-001", "rec-002"]),
 
         User(id: "ath-002", email: "mwilliams@example.com", displayName: "Marcus Williams",
@@ -20,7 +20,7 @@ struct MockData {
              highSchool: "Lincoln HS", gradYear: 2026, sport: "Football",
              position: "WR", state: "TX", height: "6'0\"", weight: "180",
              fortyYardDash: "4.42", gpa: 3.5,
-             instagramHandle: "marcus.williams",
+             instagramHandle: "marcus.williams", snapchatHandle: "mwilliams26",
              profileViewsThisWeek: 22, profileViewerIDs: ["rec-001", "rec-003", "brand-001"]),
 
         User(id: "ath-003", email: "tjohnson@example.com", displayName: "Tyler Johnson",

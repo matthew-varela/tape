@@ -215,6 +215,9 @@ public class UserService {
         if (updates.getTiktokHandle() != null) {
             user.setTiktokHandle(normalizeSocialHandle(updates.getTiktokHandle()));
         }
+        if (updates.getSnapchatHandle() != null) {
+            user.setSnapchatHandle(normalizeSocialHandle(updates.getSnapchatHandle()));
+        }
         // An empty list is a meaningful value here (clear the shortlist), so
         // only a missing key skips the update.
         if (updates.getTargetSchoolIds() != null) {
@@ -234,6 +237,7 @@ public class UserService {
         // Accept pasted profile URLs.
         handle = handle.replaceFirst("(?i)^https?://(www\\.)?instagram\\.com/", "");
         handle = handle.replaceFirst("(?i)^https?://(www\\.)?tiktok\\.com/", "");
+        handle = handle.replaceFirst("(?i)^https?://(www\\.)?snapchat\\.com/(add/)?", "");
         handle = handle.replaceFirst("^/+", "");
         if (handle.startsWith("@")) handle = handle.substring(1);
         // Drop path/query leftovers from pasted URLs ("user/?hl=en").

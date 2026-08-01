@@ -128,8 +128,8 @@
 		768A759636934EC2E7EAA171 /* School.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = School.swift; sourceTree = "<group>"; };
 		79C3B0A64AD888EE6D732FD9 /* ScoutingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScoutingService.swift; sourceTree = "<group>"; };
 		7A40B9994E84A9065EAA68B5 /* SignUpView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignUpView.swift; sourceTree = "<group>"; };
-		7EEE3204B338C48BF523633F /* Configuration.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = Configuration.storekit; sourceTree = "<group>"; };
-		8584A24172F167D789D40B89 /* Tape.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Tape.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		7EEE3204B338C48BF523633F /* Configuration.storekit */ = {isa = PBXFileReference; path = Configuration.storekit; sourceTree = "<group>"; };
+		8584A24172F167D789D40B89 /* Tape.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Tape.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		86158AE985AC535A1DF26EE0 /* Video.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Video.swift; sourceTree = "<group>"; };
 		888C93F3926F575B7633E8E8 /* FirebaseAuthService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirebaseAuthService.swift; sourceTree = "<group>"; };
 		895FED748729DE18DCDC622B /* APIModerationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIModerationService.swift; sourceTree = "<group>"; };
@@ -485,6 +485,7 @@
 				LastUpgradeCheck = 1640;
 				TargetAttributes = {
 					518E2037129B0255833CF628 = {
+						DevelopmentTeam = "${DEVELOPMENT_TEAM}";
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -735,7 +736,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3HZM28334C;
 				INFOPLIST_FILE = Tape/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -756,7 +756,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 3HZM28334C;
 				INFOPLIST_FILE = Tape/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

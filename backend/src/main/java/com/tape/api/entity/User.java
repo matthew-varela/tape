@@ -81,6 +81,10 @@ public class User {
     @Column(length = 64)
     private String tiktokHandle;
 
+    /** Snapchat username without leading @. Null/blank hides the profile icon. */
+    @Column(length = 64)
+    private String snapchatHandle;
+
     private int dmsSentThisMonth;
 
     @Column(nullable = false, updatable = false)
@@ -173,6 +177,9 @@ public class User {
 
     public String getTiktokHandle() { return tiktokHandle; }
     public void setTiktokHandle(String tiktokHandle) { this.tiktokHandle = tiktokHandle; }
+
+    public String getSnapchatHandle() { return snapchatHandle; }
+    public void setSnapchatHandle(String snapchatHandle) { this.snapchatHandle = snapchatHandle; }
 
     public int getDmsSentThisMonth() { return dmsSentThisMonth; }
     public void setDmsSentThisMonth(int dmsSentThisMonth) { this.dmsSentThisMonth = dmsSentThisMonth; }

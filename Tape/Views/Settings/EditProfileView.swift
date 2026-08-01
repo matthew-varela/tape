@@ -30,6 +30,7 @@ struct EditProfileView: View {
     @State private var coachPosition = ""
     @State private var instagramHandle = ""
     @State private var tiktokHandle = ""
+    @State private var snapchatHandle = ""
 
     @State private var targetSchoolIDs: [String] = []
     /// Single-id list for the coach's school so it shares `SchoolPickerView`.
@@ -138,6 +139,9 @@ struct EditProfileView: View {
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
         formField("TikTok (@username)", text: $tiktokHandle)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        formField("Snapchat (@username)", text: $snapchatHandle)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
     }
@@ -313,6 +317,7 @@ struct EditProfileView: View {
         coachPosition = user.title ?? ""
         instagramHandle = user.instagramHandle.map { SocialHandle.normalize($0) } ?? ""
         tiktokHandle = user.tiktokHandle.map { SocialHandle.normalize($0) } ?? ""
+        snapchatHandle = user.snapchatHandle.map { SocialHandle.normalize($0) } ?? ""
         targetSchoolIDs = user.targetSchoolIDs
         coachSchoolIDs = [user.schoolId].compactMap { $0 }
         profileImageURL = user.profileImageURL
@@ -372,6 +377,9 @@ struct EditProfileView: View {
             user.tiktokHandle = SocialHandle.normalize(tiktokHandle).isEmpty
                 ? ""
                 : SocialHandle.normalize(tiktokHandle)
+            user.snapchatHandle = SocialHandle.normalize(snapchatHandle).isEmpty
+                ? ""
+                : SocialHandle.normalize(snapchatHandle)
 
             try await profileService.updateProfile(user)
             await authVM.refreshCurrentUser()

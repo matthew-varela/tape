@@ -302,25 +302,32 @@ struct AthleteProfileView: View {
         .padding(.bottom, 20)
     }
 
-    /// Instagram / TikTok icons — each only renders when that handle is present.
+    /// Social icons — each only renders when that handle is present.
     @ViewBuilder
     private func socialLinkIcons(for athlete: User) -> some View {
         let ig = SocialHandle.normalize(athlete.instagramHandle ?? "")
         let tt = SocialHandle.normalize(athlete.tiktokHandle ?? "")
+        let sc = SocialHandle.normalize(athlete.snapchatHandle ?? "")
 
-        if !ig.isEmpty || !tt.isEmpty {
-            HStack(spacing: 12) {
+        if !ig.isEmpty || !tt.isEmpty || !sc.isEmpty {
+            HStack(spacing: 10) {
                 if !ig.isEmpty, let url = SocialPlatform.instagram.profileURL(handle: ig) {
                     Link(destination: url) {
                         SocialPlatformIcon(platform: .instagram, size: 30)
                     }
-                    .accessibilityLabel("Instagram")
+                    .accessibilityLabel(SocialPlatform.instagram.accessibilityLabel)
                 }
                 if !tt.isEmpty, let url = SocialPlatform.tiktok.profileURL(handle: tt) {
                     Link(destination: url) {
                         SocialPlatformIcon(platform: .tiktok, size: 30)
                     }
-                    .accessibilityLabel("TikTok")
+                    .accessibilityLabel(SocialPlatform.tiktok.accessibilityLabel)
+                }
+                if !sc.isEmpty, let url = SocialPlatform.snapchat.profileURL(handle: sc) {
+                    Link(destination: url) {
+                        SocialPlatformIcon(platform: .snapchat, size: 30)
+                    }
+                    .accessibilityLabel(SocialPlatform.snapchat.accessibilityLabel)
                 }
             }
         }
